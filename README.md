@@ -11,11 +11,13 @@ Built as a tribute for **May 15th**, the application uses the phone's camera, GP
 * **Geospatial Anchoring:** Unlike standard "sticker" AR, these fireworks are mathematically locked to the **Parish of the Holy Sacrifice** (`14.6588, 121.0711`). No matter where you turn or walk, the display stays fixed over the church.
 * **Immersive Cylindrical Marquee:** A 20-meter radius rotating ring suspended 15 meters in the air. The scale is designed so the viewer can physically walk "inside" the anniversary message.
 * **Proximity-Triggered Reveal:** The marquee fades in only when within 30m of the church; the anniversary stats appear within 20m. Walking toward the location becomes a discovery.
-* **Physics-Based Shells:** Four firework types with realistic gravity, wind drift, and streak trails rendered as `THREE.LineSegments`:
+* **Physics-Based Shells:** Six firework types with realistic gravity, wind drift, and streak trails rendered as `THREE.LineSegments`:
   * **Peony** — uniform spherical burst
   * **Willow** — slower, drooping fall under heavier gravity
   * **Chrysanthemum** — fast, wide-radius burst with trailing crackle sounds
-  * **Heart** — parametric curve (`16 sin³(t)`) that forms a heart in the sky, hot-pink, 20% spawn chance
+  * **Heart** — parametric curve (`16 sin³(t)`) forms a heart viewed from the ground; hot-pink, 10% spawn
+  * **Lemniscate** — Bernoulli's lemniscate (`x=cos(t)/(1+sin²t)`) traces the ∞ symbol in the sky; amber gold, 8% spawn
+  * **Lissajous 3:2** — `x=sin(3t+π/2), z=sin(2t)`, the oscilloscope figure from wave physics lab; electric cyan, 8% spawn
 * **Spatial 3D Audio:** Web Audio API `PannerNode` with HRTF model positions each explosion in 3D space. The audio listener orientation updates every frame from the phone's gyroscope, so sounds pan correctly as you turn.
 * **Earphone / Bluetooth Mode:** Automatically detected via `enumerateDevices()` on device connection. Activates a synthesized outdoor reverb convolver and drops the thump oscillator from 150Hz to 100Hz for true bass reproduction through IEMs. Manual toggle (♪ button, bottom-left).
 * **Live Anniversary Stats:** Four `PlaneGeometry` text panels below the marquee calculate the exact elapsed time (Years, Months, Weeks, Days) since **May 15, 2008**, arranged facing the four compass directions.
