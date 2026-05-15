@@ -378,47 +378,60 @@
 
                 for (let i = 0; i < this.particleCount; i++) {
                     let v;
+                    // Shaped shells: pre-position particles along the parametric curve at explosion
+                    // so the shape appears instantly rather than emerging slowly from a point.
+                    // Velocity is slow outward drift; the curve offset carries the shape information.
+                    let ox = 0, oy = 0, oz = 0; // position offset from explosion centre
+
                     if (this.type === 3) {
-                        // Heart: parametric curve in XZ plane viewed from ground
+                        // Heart
                         const t = (i / this.particleCount) * Math.PI * 2;
                         const hx = 16 * Math.pow(Math.sin(t), 3);
+                        const hy = (Math.random() - 0.5) * 2;
                         const hz = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
-                        v = new THREE.Vector3(hx, (Math.random() - 0.5) * 2, hz)
-                            .normalize().multiplyScalar(2.5 + Math.random());
+                        const sc = 12 / 21; // scale max extent (~21) to 12 units
+                        ox = hx * sc; oy = hy * sc; oz = hz * sc;
+                        v = new THREE.Vector3(hx, hy, hz).normalize().multiplyScalar(0.8 + Math.random() * 0.4);
                     } else if (this.type === 4) {
-                        // Lemniscate of Bernoulli (∞): x=cos(t)/(1+sin²(t)), z=sin(t)cos(t)/(1+sin²(t))
+                        // Lemniscate of Bernoulli (∞)
                         const t = (i / this.particleCount) * Math.PI * 2;
                         const d = 1 + Math.sin(t) * Math.sin(t);
                         const lx = Math.cos(t) / d;
+                        const ly = (Math.random() - 0.5) * 0.12;
                         const lz = Math.sin(t) * Math.cos(t) / d;
-                        v = new THREE.Vector3(lx, (Math.random() - 0.5) * 0.12, lz)
-                            .normalize().multiplyScalar(4.0 + Math.random() * 0.8);
+                        ox = lx * 13; oy = ly * 13; oz = lz * 13; // max |lx|=1 → 13-unit radius
+                        v = new THREE.Vector3(lx, ly, lz).normalize().multiplyScalar(0.8 + Math.random() * 0.4);
                     } else if (this.type === 5) {
-                        // Lissajous 3:2 — the oscilloscope figure from wave physics lab
+                        // Lissajous 3:2
                         const t = (i / this.particleCount) * Math.PI * 2;
-                        const lx = Math.sin(3 * t + Math.PI / 2); // cos(3t)
+                        const lx = Math.sin(3 * t + Math.PI / 2);
+                        const ly = (Math.random() - 0.5) * 0.12;
                         const lz = Math.sin(2 * t);
-                        v = new THREE.Vector3(lx, (Math.random() - 0.5) * 0.12, lz)
-                            .normalize().multiplyScalar(4.0 + Math.random() * 0.8);
+                        ox = lx * 11; oy = ly * 11; oz = lz * 11; // scale ≤√2 → ~11 units each axis
+                        v = new THREE.Vector3(lx, ly, lz).normalize().multiplyScalar(0.8 + Math.random() * 0.4);
                     } else {
                         v = new THREE.Vector3(
                             (Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)
                         ).normalize();
-                        if (this.type === 0) v.multiplyScalar(Math.random() * 3 + 4);       // Peony
-                        else if (this.type === 1) v.multiplyScalar(Math.random() * 2 + 2);  // Willow
-                        else v.multiplyScalar(Math.random() * 4 + 5);                       // Chrysanthemum
+                        if (this.type === 0) v.multiplyScalar(Math.random() * 3 + 4);
+                        else if (this.type === 1) v.multiplyScalar(Math.random() * 2 + 2);
+                        else v.multiplyScalar(Math.random() * 4 + 5);
                     }
 
                     this.velocities.push(v);
-                    
-                    this.positions[i * 6] = this.pos.x;
-                    this.positions[i * 6 + 1] = this.pos.y;
-                    this.positions[i * 6 + 2] = this.pos.z;
-                    this.positions[i * 6 + 3] = this.pos.x;
-                    this.positions[i * 6 + 4] = this.pos.y;
-                    this.positions[i * 6 + 5] = this.pos.z;
-                    
-                    this.lifespans.push(0.7 + Math.random() * 0.6); 
+
+                    const sx = this.pos.x + ox;
+                    const sy = this.pos.y + oy;
+                    const sz = this.pos.z + oz;
+                    this.positions[i * 6]     = sx;
+                    this.positions[i * 6 + 1] = sy;
+                    this.positions[i * 6 + 2] = sz;
+                    this.positions[i * 6 + 3] = sx;
+                    this.positions[i * 6 + 4] = sy;
+                    this.positions[i * 6 + 5] = sz;
+
+                    // Shaped shells: tight lifespan so the outline fades coherently
+                    this.lifespans.push(this.type >= 3 ? 0.88 + Math.random() * 0.18 : 0.7 + Math.random() * 0.6);
                 }
 
                 this.geometry = new THREE.BufferGeometry();
@@ -491,9 +504,9 @@
                         posArr[i * 6 + 4] = posArr[i * 6 + 1] - v.y * streakLength;
                         posArr[i * 6 + 5] = posArr[i * 6 + 2] - v.z * streakLength;
 
-                        // Low gravity on shaped shells so the outline hangs readable longer
-                        v.y -= this.type === 1 ? 0.05 : (this.type >= 3) ? 0.012 : 0.03;
-                        v.multiplyScalar(0.96); 
+                        // Minimal gravity on shaped shells so the outline stays readable
+                        v.y -= this.type === 1 ? 0.05 : (this.type >= 3) ? 0.004 : 0.03;
+                        v.multiplyScalar(this.type >= 3 ? 0.985 : 0.96);
                         v.add(windDrift);
                     }
                     this.geometry.attributes.position.needsUpdate = true;
