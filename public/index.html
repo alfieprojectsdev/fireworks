@@ -363,11 +363,15 @@
                 scene.remove(this.particles);
                 this.isRocket = false;
                 
-                // 0=Peony, 1=Willow, 2=Chrysanthemum, 3=Heart (20% chance)
-                this.type = Math.random() < 0.2 ? 3 : Math.floor(Math.random() * 3);
-                if (this.type === 3) this.color = new THREE.Color().setHSL(0.93, 1.0, 0.75);
+                // 0=Peony 1=Willow 2=Chrysanthemum 3=Heart 4=Lemniscate(∞) 5=Lissajous(3:2)
+                const _r = Math.random();
+                this.type = _r < 0.10 ? 3 : _r < 0.18 ? 4 : _r < 0.26 ? 5 : Math.floor(Math.random() * 3);
+                if (this.type === 3) this.color = new THREE.Color().setHSL(0.93, 1.0, 0.75); // hot pink
+                if (this.type === 4) this.color = new THREE.Color().setHSL(0.12, 1.0, 0.65); // amber gold
+                if (this.type === 5) this.color = new THREE.Color().setHSL(0.55, 1.0, 0.70); // electric cyan
 
-                this.particleCount = this.type === 2 ? 300 : this.type === 3 ? 120 : 220;
+                this.particleCount = this.type === 2 ? 300 : this.type === 3 ? 120
+                                   : this.type === 4 ? 160 : this.type === 5 ? 180 : 220;
                 this.positions = new Float32Array(this.particleCount * 6);
                 this.velocities = [];
                 this.lifespans = [];
@@ -375,12 +379,27 @@
                 for (let i = 0; i < this.particleCount; i++) {
                     let v;
                     if (this.type === 3) {
-                        // Heart: parametric curve in XZ plane so it reads as a heart viewed from ground
+                        // Heart: parametric curve in XZ plane viewed from ground
                         const t = (i / this.particleCount) * Math.PI * 2;
                         const hx = 16 * Math.pow(Math.sin(t), 3);
                         const hz = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
                         v = new THREE.Vector3(hx, (Math.random() - 0.5) * 2, hz)
                             .normalize().multiplyScalar(2.5 + Math.random());
+                    } else if (this.type === 4) {
+                        // Lemniscate of Bernoulli (∞): x=cos(t)/(1+sin²(t)), z=sin(t)cos(t)/(1+sin²(t))
+                        const t = (i / this.particleCount) * Math.PI * 2;
+                        const d = 1 + Math.sin(t) * Math.sin(t);
+                        const lx = Math.cos(t) / d;
+                        const lz = Math.sin(t) * Math.cos(t) / d;
+                        v = new THREE.Vector3(lx, (Math.random() - 0.5) * 0.12, lz)
+                            .normalize().multiplyScalar(4.0 + Math.random() * 0.8);
+                    } else if (this.type === 5) {
+                        // Lissajous 3:2 — the oscilloscope figure from wave physics lab
+                        const t = (i / this.particleCount) * Math.PI * 2;
+                        const lx = Math.sin(3 * t + Math.PI / 2); // cos(3t)
+                        const lz = Math.sin(2 * t);
+                        v = new THREE.Vector3(lx, (Math.random() - 0.5) * 0.12, lz)
+                            .normalize().multiplyScalar(4.0 + Math.random() * 0.8);
                     } else {
                         v = new THREE.Vector3(
                             (Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)
@@ -466,13 +485,14 @@
                         posArr[i * 6 + 2] += v.z;
                         
                         // Tail position trails behind
-                        const streakLength = this.type === 2 ? 3 : this.type === 3 ? 1 : 1.5;
+                        // Short streaks on shaped shells so the outline stays crisp
+                        const streakLength = this.type === 2 ? 3 : (this.type >= 3) ? 0.8 : 1.5;
                         posArr[i * 6 + 3] = posArr[i * 6] - v.x * streakLength;
                         posArr[i * 6 + 4] = posArr[i * 6 + 1] - v.y * streakLength;
                         posArr[i * 6 + 5] = posArr[i * 6 + 2] - v.z * streakLength;
 
-                        // Apply physics (hearts drift down slowly)
-                        v.y -= this.type === 1 ? 0.05 : this.type === 3 ? 0.015 : 0.03;
+                        // Low gravity on shaped shells so the outline hangs readable longer
+                        v.y -= this.type === 1 ? 0.05 : (this.type >= 3) ? 0.012 : 0.03;
                         v.multiplyScalar(0.96); 
                         v.add(windDrift);
                     }
@@ -590,8 +610,8 @@
 
             // Thump: earphones can reproduce true bass; speakers need higher freq with harmonics
             const thumpFreq = earphonesMode
-                ? (shellType === 1 ? 80 : shellType === 3 ? 120 : 100)
-                : (shellType === 1 ? 120 : shellType === 3 ? 180 : 150);
+                ? (shellType === 1 ? 80 : shellType === 3 ? 120 : shellType === 4 ? 95 : shellType === 5 ? 110 : 100)
+                : (shellType === 1 ? 120 : shellType === 3 ? 180 : shellType === 4 ? 135 : shellType === 5 ? 160 : 150);
             const thumpOsc = ctx.createOscillator();
             thumpOsc.type = 'triangle';
             thumpOsc.frequency.setValueAtTime(thumpFreq, now);
@@ -599,7 +619,7 @@
             const shaper = ctx.createWaveShaper();
             shaper.curve = _shaperCurve;
             const thumpGain = ctx.createGain();
-            thumpGain.gain.setValueAtTime(shellType === 3 ? 0.4 : 0.75, now);
+            thumpGain.gain.setValueAtTime(shellType === 3 ? 0.4 : shellType >= 4 ? 0.55 : 0.75, now);
             thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
             thumpOsc.connect(shaper);
             shaper.connect(thumpGain);
@@ -608,12 +628,13 @@
             thumpOsc.stop(now + 0.35);
 
             // Body: bandpass noise centred where phone speakers have actual output (300–600Hz)
-            const bodyDur = shellType === 3 ? 0.08 : 0.14;
+            const bodyDur = shellType === 3 ? 0.08 : shellType >= 4 ? 0.10 : 0.14;
             const bodySrc = ctx.createBufferSource();
-            bodySrc.buffer = _noisePool.body; // gain envelope silences it at bodyDur
+            bodySrc.buffer = _noisePool.body;
             const bodyFilter = ctx.createBiquadFilter();
             bodyFilter.type = 'bandpass';
-            bodyFilter.frequency.value = shellType === 1 ? 300 : shellType === 3 ? 600 : 420;
+            bodyFilter.frequency.value = shellType === 1 ? 300 : shellType === 3 ? 600
+                                       : shellType === 4 ? 380 : shellType === 5 ? 560 : 420;
             bodyFilter.Q.value = 0.7;
             const bodyGain = ctx.createGain();
             bodyGain.gain.setValueAtTime(1.0, now);
