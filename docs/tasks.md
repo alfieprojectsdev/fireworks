@@ -1,0 +1,6 @@
+- [x] Implement distance and bearing GPS calculation in `startExperience`.
+- [x] Create `THREE.Group` to hold the church-centered AR assets.
+- [x] Build the `THREE.CylinderGeometry` Marquee with spinning animation.
+- [x] Calculate days, weeks, months, years since 15 May 2008.
+- [x] Generate 4 transparent `PlaneGeometry` text nodes for statistics.
+- [x] Arrange statistics in a square formation (0, 90, 180, 270 degrees) below the marquee.
