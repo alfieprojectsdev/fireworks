@@ -169,7 +169,7 @@
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
         let controls;
         let showFireworks = false;
@@ -367,7 +367,7 @@
                 this.type = Math.random() < 0.2 ? 3 : Math.floor(Math.random() * 3);
                 if (this.type === 3) this.color = new THREE.Color().setHSL(0.93, 1.0, 0.75);
 
-                this.particleCount = this.type === 2 ? 400 : this.type === 3 ? 120 : 250;
+                this.particleCount = this.type === 2 ? 300 : this.type === 3 ? 120 : 220;
                 this.positions = new Float32Array(this.particleCount * 6);
                 this.velocities = [];
                 this.lifespans = [];
@@ -499,8 +499,22 @@
         let earphonesMode = false;
         let reverbNode = null;
         let reverbGain = null;
+        let _noisePool = null; // shared AudioBuffers; source nodes are cheap, buffer fills are not
 
         function initAudioGraph(ctx) {
+            // Pre-generate noise buffers once — reused by all explosions via new source nodes
+            const makeNoise = (dur) => {
+                const buf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * dur), ctx.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+                return buf;
+            };
+            _noisePool = {
+                body:    makeNoise(0.20),  // longer than max bodyDur (0.14s); gain envelope cuts it
+                sizzle:  makeNoise(1.50),  // longer than max sizzleDur (1.1s)
+                crackle: makeNoise(0.06)
+            };
+
             // Synthesized outdoor reverb: 2s exponentially decaying stereo noise
             reverbNode = ctx.createConvolver();
             const len = Math.ceil(ctx.sampleRate * 2.0);
@@ -595,11 +609,8 @@
 
             // Body: bandpass noise centred where phone speakers have actual output (300–600Hz)
             const bodyDur = shellType === 3 ? 0.08 : 0.14;
-            const bodyBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bodyDur), ctx.sampleRate);
-            const bodyData = bodyBuf.getChannelData(0);
-            for (let i = 0; i < bodyData.length; i++) bodyData[i] = Math.random() * 2 - 1;
             const bodySrc = ctx.createBufferSource();
-            bodySrc.buffer = bodyBuf;
+            bodySrc.buffer = _noisePool.body; // gain envelope silences it at bodyDur
             const bodyFilter = ctx.createBiquadFilter();
             bodyFilter.type = 'bandpass';
             bodyFilter.frequency.value = shellType === 1 ? 300 : shellType === 3 ? 600 : 420;
@@ -614,11 +625,8 @@
 
             // Sizzle tail: slow-decaying high-frequency noise (burning sparks)
             const sizzleDur = 0.6 + Math.random() * 0.5;
-            const sizzleBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * sizzleDur), ctx.sampleRate);
-            const sizzleData = sizzleBuf.getChannelData(0);
-            for (let i = 0; i < sizzleData.length; i++) sizzleData[i] = Math.random() * 2 - 1;
             const sizzleSrc = ctx.createBufferSource();
-            sizzleSrc.buffer = sizzleBuf;
+            sizzleSrc.buffer = _noisePool.sizzle; // gain envelope silences it at sizzleDur
             const sizzleFilter = ctx.createBiquadFilter();
             sizzleFilter.type = 'highpass';
             sizzleFilter.frequency.value = 3000;
@@ -634,11 +642,8 @@
             if (shellType === 2) {
                 for (let k = 0; k < 6; k++) {
                     const delay = 0.06 + Math.random() * 0.5;
-                    const crackleBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.04), ctx.sampleRate);
-                    const crackleData = crackleBuf.getChannelData(0);
-                    for (let i = 0; i < crackleData.length; i++) crackleData[i] = Math.random() * 2 - 1;
                     const crackleSrc = ctx.createBufferSource();
-                    crackleSrc.buffer = crackleBuf;
+                    crackleSrc.buffer = _noisePool.crackle;
                     const crackleGain = ctx.createGain();
                     crackleGain.gain.setValueAtTime(0.25 + Math.random() * 0.3, now + delay);
                     crackleGain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.04);
@@ -684,7 +689,7 @@
                     } else if (child.userData.isStat) {
                         child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
                     } else if (child.userData.isGround) {
-                        child.material.opacity = 0.025 + 0.015 * Math.sin(Date.now() * 0.0006);
+                        child.material.opacity = 0.025 + 0.015 * Math.sin(performance.now() * 0.0006);
                     } else if (child.userData.isMessageCylinder) {
                         child.rotation.y += 0.003; // counter-rotates against the outer marquee
                     }
@@ -692,9 +697,9 @@
                 marqueeCylinder.rotation.y -= 0.002;
             }
 
-            if (showFireworks) {
+            if (showFireworks && fireworks.length < 15) {
                 if (Math.random() < 0.1) fireworks.push(new Firework());
-                if (Math.random() < 0.02) {
+                if (Math.random() < 0.02 && fireworks.length < 13) {
                     fireworks.push(new Firework());
                     fireworks.push(new Firework());
                 }
