@@ -114,7 +114,7 @@
 
 <body>
 
-    <video id="camera-bg" class="layer" autoplay playsinline muted loop webkit-playsinline></video>
+    <video id="camera-bg" class="layer" autoplay playsinline muted webkit-playsinline></video>
     <canvas id="ar-canvas" class="layer"></canvas>
 
     <div id="ui-layer" class="layer">
@@ -578,7 +578,11 @@
             document.getElementById('status-text').style.opacity = '0';
             
             navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-                .then(stream => { document.getElementById('camera-bg').srcObject = stream; })
+                .then(stream => {
+                    const vid = document.getElementById('camera-bg');
+                    vid.srcObject = stream;
+                    vid.play().catch(() => {});
+                })
                 .catch(err => console.error("Camera error:", err));
                 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
