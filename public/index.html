@@ -97,6 +97,20 @@
             margin-top: 24px;
         }
 
+        #compass-indicator {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            z-index: 4;
+            font-size: 0.65rem;
+            font-family: monospace;
+            letter-spacing: 0.06em;
+            color: white;
+            opacity: 0;
+            transition: opacity 0.5s;
+            pointer-events: none;
+        }
+
         #secret-override {
             position: absolute;
             top: 0;
@@ -126,6 +140,7 @@
         </div>
     </div>
 
+    <div id="compass-indicator"></div>
     <div id="secret-override"></div>
 
     <script>
@@ -587,6 +602,21 @@
                 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             controls = new THREE.DeviceOrientationControls(camera);
+
+            // Compass calibration feedback
+            const compassEl = document.getElementById('compass-indicator');
+            compassEl.textContent = '◎ calibrating heading…';
+            compassEl.style.opacity = '1';
+            const onHeadingLocked = (e) => {
+                if (e.absolute || e.type === 'deviceorientationabsolute') {
+                    compassEl.textContent = '◉ heading locked';
+                    setTimeout(() => { compassEl.style.opacity = '0'; }, 2500);
+                    window.removeEventListener('deviceorientationabsolute', onHeadingLocked);
+                    window.removeEventListener('deviceorientation', onHeadingLocked);
+                }
+            };
+            window.addEventListener('deviceorientationabsolute', onHeadingLocked);
+            window.addEventListener('deviceorientation', onHeadingLocked);
             arGroup = createARGroup(uLat, uLng, isTestMode);
             scene.add(arGroup);
 
