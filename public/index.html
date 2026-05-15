@@ -583,6 +583,8 @@
                         child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
                     } else if (child.userData.isGround) {
                         child.material.opacity = 0.025 + 0.015 * Math.sin(Date.now() * 0.0006);
+                    } else if (child.userData.isMessageCylinder) {
+                        child.rotation.y += 0.003; // counter-rotates against the outer marquee
                     }
                 });
                 marqueeCylinder.rotation.y -= 0.002;
@@ -647,6 +649,40 @@
             window.addEventListener('deviceorientation', onHeadingLocked);
             arGroup = createARGroup(uLat, uLng, isTestMode);
             scene.add(arGroup);
+
+            // 60s after experience starts, fade in a personal inner cylinder
+            setTimeout(() => {
+                if (!arGroup) return;
+                const msgStart = new Date('2008-05-15T00:00:00');
+                const msgNow = new Date();
+                let yr = msgNow.getFullYear() - msgStart.getFullYear();
+                if (msgNow.getMonth() < msgStart.getMonth() ||
+                    (msgNow.getMonth() === msgStart.getMonth() && msgNow.getDate() < msgStart.getDate())) yr--;
+
+                const msgCanvas = document.createElement('canvas');
+                msgCanvas.width = 2048; msgCanvas.height = 192;
+                const msgCtx = msgCanvas.getContext('2d');
+                msgCtx.font = "56px sans-serif";
+                msgCtx.textAlign = "center";
+                msgCtx.textBaseline = "middle";
+                msgCtx.fillStyle = "rgba(255, 210, 235, 0.9)";
+                const line = `${yr} years. Still you. Always you.`;
+                for (let i = 0; i < 2; i++) msgCtx.fillText(line, 512 + i * 1024, 96);
+
+                const msgMat = new THREE.MeshBasicMaterial({
+                    map: new THREE.CanvasTexture(msgCanvas),
+                    transparent: true, opacity: 0,
+                    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+                });
+                const msgMesh = new THREE.Mesh(new THREE.CylinderGeometry(12, 12, 3, 64, 1, true), msgMat);
+                msgMesh.userData.isMessageCylinder = true;
+                arGroup.add(msgMesh);
+
+                const msgFade = setInterval(() => {
+                    msgMat.opacity = Math.min(msgMat.opacity + 0.008, 0.65);
+                    if (msgMat.opacity >= 0.65) clearInterval(msgFade);
+                }, 50);
+            }, 60000);
 
             if (isTestMode) {
                 // Test mode: simulate standing at the church — reveal everything immediately
