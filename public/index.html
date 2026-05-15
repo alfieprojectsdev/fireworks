@@ -90,6 +90,13 @@
             font-family: sans-serif;
         }
 
+        #build-version {
+            font-size: 0.6rem;
+            font-family: monospace;
+            opacity: 0.2;
+            margin-top: 24px;
+        }
+
         #secret-override {
             position: absolute;
             top: 0;
@@ -100,6 +107,7 @@
             pointer-events: auto;
         }
     </style>
+    <script src="version.js"></script>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
 </head>
@@ -114,12 +122,17 @@
             <div id="splash-arrow">↑</div>
             <div id="splash-headline">Look up</div>
             <span id="status-message">Locating…</span>
+            <span id="build-version"></span>
         </div>
     </div>
 
     <div id="secret-override"></div>
 
     <script>
+        if (window.BUILD_VERSION) {
+            document.getElementById('build-version').textContent = window.BUILD_VERSION;
+        }
+
         const canvas = document.getElementById('ar-canvas');
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);

@@ -4,6 +4,18 @@ echo "====================================================="
 echo "🔨 Building the latest APK..."
 echo "====================================================="
 
+# --- Versioning ---
+# Bump versionCode so Android treats this as a newer APK (won't prompt "already installed")
+CURRENT_VC=$(grep 'versionCode' android/app/build.gradle | grep -o '[0-9]*')
+NEW_VC=$((CURRENT_VC + 1))
+sed -i "s/versionCode $CURRENT_VC/versionCode $NEW_VC/" android/app/build.gradle
+
+# Write a build timestamp into version.js (gitignored); cap sync will bundle it into the APK
+BUILD_TS=$(date '+%Y-%m-%d %H:%M')
+echo "window.BUILD_VERSION = 'v$NEW_VC · $BUILD_TS';" > public/version.js
+echo "📦 Build v$NEW_VC ($BUILD_TS)"
+echo ""
+
 # Sync web assets with Capacitor
 npx cap sync android
 if [ $? -ne 0 ]; then
