@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Firework Shell Debug</title>
+    <style>
+        body { margin: 0; background: #08081E; overflow: hidden; font-family: monospace; }
+        #hud {
+            position: absolute; top: 12px; left: 12px; color: white;
+            font-size: 0.75rem; opacity: 0.8; line-height: 1.8;
+            pointer-events: none;
+        }
+        #shell-name {
+            font-size: 1.4rem; font-weight: bold; margin-bottom: 4px;
+            letter-spacing: 0.08em;
+        }
+    </style>
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+    <div id="shell-name">—</div>
+    <div>Space / click → fire current shell</div>
+    <div>← → arrow keys → change shell type</div>
+    <div>R → fire rapid burst</div>
+</div>
+<script>
+const SHELL_NAMES = ['Peony','Willow','Chrysanthemum','Heart','Lemniscate ∞','Lissajous 3:2'];
+const SHELL_COLORS = [null, null, null,
+    new THREE.Color().setHSL(0.93,1.0,0.75),
+    new THREE.Color().setHSL(0.12,1.0,0.65),
+    new THREE.Color().setHSL(0.55,1.0,0.70)
+];
+
+let currentType = 3; // start on Heart
+const canvas = document.getElementById('c');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 2000);
+camera.position.set(0, 0, 80); // look from outside toward origin
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+const windDrift = new THREE.Vector3(0.015, 0, -0.005);
+
+class Shell {
+    constructor(type) {
+        this.type = type;
+        this.isDead = false;
+        this.life = 0;
+        this.maxLife = 160;
+        this.color = SHELL_COLORS[type] || new THREE.Color().setHSL(Math.random(), 1, 0.6);
+
+        const pc = type === 2 ? 300 : type === 3 ? 120 : type === 4 ? 160 : type === 5 ? 180 : 220;
+        this.particleCount = pc;
+        this.positions = new Float32Array(pc * 6);
+        this.velocities = [];
+        this.lifespans = [];
+
+        const cx = (Math.random() - 0.5) * 40;
+        const cy = (Math.random() - 0.5) * 20;
+        const cz = (Math.random() - 0.5) * 20;
+
+        for (let i = 0; i < pc; i++) {
+            let v, ox = 0, oy = 0, oz = 0;
+
+            if (type === 3) {
+                const t = (i / pc) * Math.PI * 2;
+                const hx = 16 * Math.pow(Math.sin(t), 3);
+                const hy = (Math.random() - 0.5) * 2;
+                const hz = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
+                const sc = 12 / 21;
+                ox = hx*sc; oy = hy*sc; oz = hz*sc;
+                v = new THREE.Vector3(hx, hy, hz).normalize().multiplyScalar(0.8 + Math.random()*0.4);
+            } else if (type === 4) {
+                const t = (i / pc) * Math.PI * 2;
+                const d = 1 + Math.sin(t)**2;
+                const lx = Math.cos(t)/d, ly = (Math.random()-0.5)*0.12, lz = Math.sin(t)*Math.cos(t)/d;
+                ox = lx*13; oy = ly*13; oz = lz*13;
+                v = new THREE.Vector3(lx, ly, lz).normalize().multiplyScalar(0.8 + Math.random()*0.4);
+            } else if (type === 5) {
+                const t = (i / pc) * Math.PI * 2;
+                const lx = Math.sin(3*t + Math.PI/2), ly = (Math.random()-0.5)*0.12, lz = Math.sin(2*t);
+                ox = lx*11; oy = ly*11; oz = lz*11;
+                v = new THREE.Vector3(lx, ly, lz).normalize().multiplyScalar(0.8 + Math.random()*0.4);
+            } else {
+                v = new THREE.Vector3((Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)).normalize();
+                if (type === 0) v.multiplyScalar(Math.random()*3+4);
+                else if (type === 1) v.multiplyScalar(Math.random()*2+2);
+                else v.multiplyScalar(Math.random()*4+5);
+            }
+
+            this.velocities.push(v);
+            const sx = cx+ox, sy = cy+oy, sz = cz+oz;
+            this.positions[i*6]=sx; this.positions[i*6+1]=sy; this.positions[i*6+2]=sz;
+            this.positions[i*6+3]=sx; this.positions[i*6+4]=sy; this.positions[i*6+5]=sz;
+            this.lifespans.push(type >= 3 ? 0.88+Math.random()*0.18 : 0.7+Math.random()*0.6);
+        }
+
+        this.geo = new THREE.BufferGeometry();
+        this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+        this.mesh = new THREE.LineSegments(this.geo, new THREE.LineBasicMaterial({
+            color: this.color, transparent: true, blending: THREE.AdditiveBlending
+        }));
+        scene.add(this.mesh);
+    }
+
+    update() {
+        this.life++;
+        const arr = this.positions;
+        const fadeRate = this.life / this.maxLife;
+        let allDead = true;
+        for (let i = 0; i < this.particleCount; i++) {
+            if (fadeRate * this.lifespans[i] > 1) {
+                arr[i*6]=arr[i*6+3]; arr[i*6+1]=arr[i*6+4]; arr[i*6+2]=arr[i*6+5];
+                continue;
+            }
+            allDead = false;
+            const v = this.velocities[i];
+            arr[i*6] += v.x; arr[i*6+1] += v.y; arr[i*6+2] += v.z;
+            const sl = this.type === 2 ? 3 : this.type >= 3 ? 0.8 : 1.5;
+            arr[i*6+3] = arr[i*6]-v.x*sl; arr[i*6+4] = arr[i*6+1]-v.y*sl; arr[i*6+5] = arr[i*6+2]-v.z*sl;
+            v.y -= this.type === 1 ? 0.05 : this.type >= 3 ? 0.004 : 0.03;
+            v.multiplyScalar(this.type >= 3 ? 0.985 : 0.96);
+            v.add(windDrift);
+        }
+        this.geo.attributes.position.needsUpdate = true;
+        this.mesh.material.opacity = (1 - Math.pow(fadeRate,2)) * (0.6 + Math.random()*0.4);
+        if (allDead || this.life >= this.maxLife) this.isDead = true;
+    }
+
+    destroy() { scene.remove(this.mesh); this.geo.dispose(); this.mesh.material.dispose(); }
+}
+
+let shells = [];
+
+function fire() {
+    shells.push(new Shell(currentType));
+    document.getElementById('shell-name').textContent = SHELL_NAMES[currentType];
+}
+
+function updateHUD() {
+    document.getElementById('shell-name').textContent =
+        SHELL_NAMES[currentType] + ' (type ' + currentType + ')';
+}
+
+window.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); fire(); }
+    if (e.code === 'ArrowRight') { currentType = (currentType+1)%6; updateHUD(); }
+    if (e.code === 'ArrowLeft')  { currentType = (currentType+5)%6; updateHUD(); }
+    if (e.code === 'KeyR') { for(let k=0;k<5;k++) setTimeout(()=>fire(),k*120); }
+});
+canvas.addEventListener('click', fire);
+
+// Slow orbit so you can see 3D shape
+let t = 0;
+function animate() {
+    requestAnimationFrame(animate);
+    t += 0.003;
+    camera.position.x = Math.sin(t) * 80;
+    camera.position.z = Math.cos(t) * 80;
+    camera.lookAt(0, 0, 0);
+
+    for (let i = shells.length-1; i >= 0; i--) {
+        shells[i].update();
+        if (shells[i].isDead) { shells[i].destroy(); shells.splice(i,1); }
+    }
+    renderer.render(scene, camera);
+}
+animate();
+updateHUD();
+
+window.addEventListener('resize', () => {
+    camera.aspect = innerWidth/innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
