@@ -97,6 +97,21 @@
             margin-top: 24px;
         }
 
+        #audio-mode-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 4;
+            font-size: 1.1rem;
+            color: white;
+            opacity: 0.3;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: opacity 0.3s;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
         #compass-indicator {
             position: absolute;
             top: 16px;
@@ -140,6 +155,7 @@
         </div>
     </div>
 
+    <div id="audio-mode-btn" title="Toggle earphone mode">♪</div>
     <div id="compass-indicator"></div>
     <div id="secret-override"></div>
 
@@ -480,6 +496,46 @@
 
         // --- Spatial Audio ---
         let audioCtx = null;
+        let earphonesMode = false;
+        let reverbNode = null;
+        let reverbGain = null;
+
+        function initAudioGraph(ctx) {
+            // Synthesized outdoor reverb: 2s exponentially decaying stereo noise
+            reverbNode = ctx.createConvolver();
+            const len = Math.ceil(ctx.sampleRate * 2.0);
+            const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+            for (let ch = 0; ch < 2; ch++) {
+                const d = buf.getChannelData(ch);
+                for (let i = 0; i < len; i++)
+                    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.0);
+            }
+            reverbNode.buffer = buf;
+            reverbGain = ctx.createGain();
+            reverbGain.gain.value = 0;
+            reverbNode.connect(reverbGain);
+            reverbGain.connect(ctx.destination);
+        }
+
+        async function detectEarphones() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return false;
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                // Labels are available after getUserMedia; match common BT/wired identifiers
+                return devices.some(d =>
+                    /bluetooth|headset|headphone|earphone|airpod|a2dp|wireless/i.test(d.label)
+                );
+            } catch (e) { return false; }
+        }
+
+        function setEarphonesMode(active) {
+            earphonesMode = active;
+            if (reverbGain && audioCtx)
+                reverbGain.gain.setTargetAtTime(active ? 0.28 : 0, audioCtx.currentTime, 0.5);
+            const btn = document.getElementById('audio-mode-btn');
+            btn.textContent = active ? '🎧' : '♪';
+            btn.style.opacity = active ? '0.6' : '0.3';
+        }
         const _audioFwd = new THREE.Vector3();
         const _audioUp = new THREE.Vector3();
 
@@ -516,10 +572,12 @@
             panner.rolloffFactor = 1;
             panner.setPosition(pos.x, pos.y, pos.z);
             panner.connect(comp);
+            if (earphonesMode && reverbNode) panner.connect(reverbNode); // wet send to reverb
 
-            // Thump: triangle oscillator at 150Hz (phone-audible range) pitch-dropping to 60Hz,
-            // passed through a waveshaper so the harmonics survive small speakers.
-            const thumpFreq = shellType === 1 ? 120 : shellType === 3 ? 180 : 150;
+            // Thump: earphones can reproduce true bass; speakers need higher freq with harmonics
+            const thumpFreq = earphonesMode
+                ? (shellType === 1 ? 80 : shellType === 3 ? 120 : 100)
+                : (shellType === 1 ? 120 : shellType === 3 ? 180 : 150);
             const thumpOsc = ctx.createOscillator();
             thumpOsc.type = 'triangle';
             thumpOsc.frequency.setValueAtTime(thumpFreq, now);
@@ -675,6 +733,14 @@
                 .catch(err => console.error("Camera error:", err));
                 
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            initAudioGraph(audioCtx);
+            // Try auto-detection immediately (works if camera permission granted label access)
+            detectEarphones().then(found => { if (found) setEarphonesMode(true); });
+            // Re-check whenever a device connects or disconnects
+            navigator.mediaDevices.addEventListener('devicechange', async () => {
+                setEarphonesMode(await detectEarphones());
+            });
+
             controls = new THREE.DeviceOrientationControls(camera);
 
             // Compass calibration feedback
@@ -759,6 +825,10 @@
                 }, null, { enableHighAccuracy: true });
             }
         }, 3000);
+
+        document.getElementById('audio-mode-btn').addEventListener('click', () => {
+            setEarphonesMode(!earphonesMode);
+        });
 
         let tapCount = 0;
         document.getElementById('secret-override').addEventListener('click', () => {
