@@ -184,7 +184,9 @@
         let arGroup;
         let marqueeCylinder;
         let textIllumination = 0;
-        let textBaseOpacity = 0;
+        let marqueeBaseOpacity = 0; // driven by proximity ≤30m
+        let statsBaseOpacity = 0;   // driven by proximity ≤20m
+        let userDistanceToChurch = Infinity; // metres, updated by watchPosition
 
         function createARGroup(userLat, userLng, isTestMode = false) {
             const group = new THREE.Group();
@@ -549,12 +551,17 @@
                 if (textIllumination < 0) textIllumination = 0;
             }
             if (arGroup) {
+                // Lerp base opacities toward proximity targets
+                const marqueeTarget = userDistanceToChurch <= 30 ? 0.8 : 0;
+                const statsTarget   = userDistanceToChurch <= 20 ? 0.8 : 0;
+                marqueeBaseOpacity += (marqueeTarget - marqueeBaseOpacity) * 0.008;
+                statsBaseOpacity   += (statsTarget   - statsBaseOpacity)   * 0.008;
+
                 arGroup.children.forEach(child => {
                     if (child === marqueeCylinder) {
-                        child.material.opacity = textBaseOpacity + (textIllumination * 0.6);
+                        child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);
                     } else if (child.userData.isStat) {
-                        // Max opacity for stats is 0.5, plus flash
-                        child.material.opacity = (textBaseOpacity * 0.5) + (textIllumination * 0.4);
+                        child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
                     }
                 });
                 marqueeCylinder.rotation.y -= 0.002;
@@ -620,18 +627,22 @@
             arGroup = createARGroup(uLat, uLng, isTestMode);
             scene.add(arGroup);
 
+            if (isTestMode) {
+                // Test mode: simulate standing at the church — reveal everything immediately
+                userDistanceToChurch = 0;
+            } else {
+                // Production: keep tracking position to drive the proximity reveal
+                navigator.geolocation.watchPosition(pos => {
+                    userDistanceToChurch = getDistanceKm(
+                        pos.coords.latitude, pos.coords.longitude, targetLat, targetLng
+                    ) * 1000;
+                }, null, { enableHighAccuracy: true });
+            }
+
             setTimeout(() => {
                 document.getElementById('status-text').style.display = 'none';
                 document.getElementById('camera-bg').style.opacity = '1';
                 showFireworks = true;
-                
-                // Fade in the spatial text
-                setTimeout(() => {
-                    const fade = setInterval(() => {
-                        textBaseOpacity += 0.02;
-                        if (textBaseOpacity >= 0.8) clearInterval(fade);
-                    }, 50);
-                }, 2000);
             }, 1000);
         }
 
