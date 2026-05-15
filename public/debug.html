@@ -24,6 +24,7 @@
     <div>Space / click → fire current shell</div>
     <div>← → arrow keys → change shell type</div>
     <div>R → fire rapid burst</div>
+    <div>T → top view (shaped shells) · S → side view (spherical)</div>
     <div>+ / - → orbit speed</div>
 </div>
 <script>
@@ -144,7 +145,7 @@ function fire() {
 
 function updateHUD() {
     document.getElementById('shell-name').textContent =
-        SHELL_NAMES[currentType] + ' (type ' + currentType + ')';
+        SHELL_NAMES[currentType] + '  [' + (viewMode === 'top' ? '↑ top' : '→ side') + ']';
 }
 
 window.addEventListener('keydown', e => {
@@ -154,17 +155,30 @@ window.addEventListener('keydown', e => {
     if (e.code === 'KeyR') { for(let k=0;k<5;k++) setTimeout(()=>fire(),k*120); }
     if (e.key === '+' || e.key === '=') orbitSpeed = Math.min(orbitSpeed + 0.006, 0.12);
     if (e.key === '-')                  orbitSpeed = Math.max(orbitSpeed - 0.006, 0);
+    if (e.code === 'KeyT') { viewMode = 'top';  updateHUD(); }
+    if (e.code === 'KeyS') { viewMode = 'side'; updateHUD(); }
 });
 canvas.addEventListener('click', fire);
 
 // Orbit speed: +/- keys to adjust
+// T = top-down view (best for shaped shells), S = side view (best for spherical)
 let orbitSpeed = 0.018;
+let viewMode = 'top'; // 'top' or 'side'
 let t = 0;
 function animate() {
     requestAnimationFrame(animate);
     t += orbitSpeed;
-    camera.position.x = Math.sin(t) * 80;
-    camera.position.z = Math.cos(t) * 80;
+    if (viewMode === 'top') {
+        // Elevated angle looking down at XZ plane — shaped shells read clearly
+        camera.position.x = Math.sin(t) * 50;
+        camera.position.y = 70;
+        camera.position.z = Math.cos(t) * 50;
+    } else {
+        // Equatorial orbit — good for spherical shells, shows Y spread
+        camera.position.x = Math.sin(t) * 80;
+        camera.position.y = 0;
+        camera.position.z = Math.cos(t) * 80;
+    }
     camera.lookAt(0, 0, 0);
 
     for (let i = shells.length-1; i >= 0; i--) {
