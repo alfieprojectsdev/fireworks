@@ -334,27 +334,33 @@
                 scene.remove(this.particles);
                 this.isRocket = false;
                 
-                // 0 = Peony, 1 = Willow, 2 = Chrysanthemum
-                this.type = Math.floor(Math.random() * 3);
-                
-                this.particleCount = (this.type === 2) ? 400 : 250;
+                // 0=Peony, 1=Willow, 2=Chrysanthemum, 3=Heart (20% chance)
+                this.type = Math.random() < 0.2 ? 3 : Math.floor(Math.random() * 3);
+                if (this.type === 3) this.color = new THREE.Color().setHSL(0.93, 1.0, 0.75);
+
+                this.particleCount = this.type === 2 ? 400 : this.type === 3 ? 120 : 250;
                 this.positions = new Float32Array(this.particleCount * 6);
                 this.velocities = [];
                 this.lifespans = [];
 
                 for (let i = 0; i < this.particleCount; i++) {
-                    let v = new THREE.Vector3(
-                        (Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)
-                    ).normalize();
-                    
-                    if (this.type === 0) { // Peony
-                        v.multiplyScalar(Math.random() * 3 + 4);
-                    } else if (this.type === 1) { // Willow
-                        v.multiplyScalar(Math.random() * 2 + 2);
-                    } else { // Chrysanthemum
-                        v.multiplyScalar(Math.random() * 4 + 5);
+                    let v;
+                    if (this.type === 3) {
+                        // Heart: parametric curve in XZ plane so it reads as a heart viewed from ground
+                        const t = (i / this.particleCount) * Math.PI * 2;
+                        const hx = 16 * Math.pow(Math.sin(t), 3);
+                        const hz = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+                        v = new THREE.Vector3(hx, (Math.random() - 0.5) * 2, hz)
+                            .normalize().multiplyScalar(2.5 + Math.random());
+                    } else {
+                        v = new THREE.Vector3(
+                            (Math.random() - 0.5), (Math.random() - 0.5), (Math.random() - 0.5)
+                        ).normalize();
+                        if (this.type === 0) v.multiplyScalar(Math.random() * 3 + 4);       // Peony
+                        else if (this.type === 1) v.multiplyScalar(Math.random() * 2 + 2);  // Willow
+                        else v.multiplyScalar(Math.random() * 4 + 5);                       // Chrysanthemum
                     }
-                    
+
                     this.velocities.push(v);
                     
                     this.positions[i * 6] = this.pos.x;
@@ -431,13 +437,13 @@
                         posArr[i * 6 + 2] += v.z;
                         
                         // Tail position trails behind
-                        const streakLength = this.type === 2 ? 3 : 1.5;
+                        const streakLength = this.type === 2 ? 3 : this.type === 3 ? 1 : 1.5;
                         posArr[i * 6 + 3] = posArr[i * 6] - v.x * streakLength;
                         posArr[i * 6 + 4] = posArr[i * 6 + 1] - v.y * streakLength;
                         posArr[i * 6 + 5] = posArr[i * 6 + 2] - v.z * streakLength;
-                        
-                        // Apply physics
-                        v.y -= (this.type === 1) ? 0.05 : 0.03; // Higher gravity for Willow
+
+                        // Apply physics (hearts drift down slowly)
+                        v.y -= this.type === 1 ? 0.05 : this.type === 3 ? 0.015 : 0.03;
                         v.multiplyScalar(0.96); 
                         v.add(windDrift);
                     }
@@ -487,7 +493,7 @@
             bangSrc.buffer = bangBuf;
             const bangFilter = ctx.createBiquadFilter();
             bangFilter.type = 'highpass';
-            bangFilter.frequency.value = shellType === 1 ? 250 : 420; // Willow is deeper
+            bangFilter.frequency.value = shellType === 1 ? 250 : shellType === 3 ? 900 : 420;
             const bangGain = ctx.createGain();
             bangGain.gain.setValueAtTime(0.8, now);
             bangGain.gain.exponentialRampToValueAtTime(0.001, now + bangDur);
@@ -502,7 +508,7 @@
             boomOsc.frequency.setValueAtTime(60 + Math.random() * 25, now);
             boomOsc.frequency.exponentialRampToValueAtTime(20, now + 0.7);
             const boomGain = ctx.createGain();
-            boomGain.gain.setValueAtTime(0.6, now);
+            boomGain.gain.setValueAtTime(shellType === 3 ? 0.25 : 0.6, now);
             boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
             boomOsc.connect(boomGain);
             boomGain.connect(panner);
