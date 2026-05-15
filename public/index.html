@@ -285,6 +285,19 @@
                 group.add(sMesh);
             });
 
+            // Ground glow: faint additive ring at Y=0 under the church
+            const ringGeo = new THREE.RingGeometry(12, 24, 64);
+            const ringMat = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(0.85, 0.55, 1.0),
+                transparent: true, opacity: 0.025,
+                blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+            });
+            const groundRing = new THREE.Mesh(ringGeo, ringMat);
+            groundRing.rotation.x = -Math.PI / 2; // lay flat
+            groundRing.position.y = -15;           // ground level (group sits at Y=15)
+            groundRing.userData.isGround = true;
+            group.add(groundRing);
+
             return group;
         }
 
@@ -568,6 +581,8 @@
                         child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);
                     } else if (child.userData.isStat) {
                         child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
+                    } else if (child.userData.isGround) {
+                        child.material.opacity = 0.025 + 0.015 * Math.sin(Date.now() * 0.0006);
                     }
                 });
                 marqueeCylinder.rotation.y -= 0.002;
