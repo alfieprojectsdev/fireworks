@@ -24,6 +24,7 @@
     <div>Space / click → fire current shell</div>
     <div>← → arrow keys → change shell type</div>
     <div>R → fire rapid burst</div>
+    <div>+ / - → orbit speed</div>
 </div>
 <script>
 const SHELL_NAMES = ['Peony','Willow','Chrysanthemum','Heart','Lemniscate ∞','Lissajous 3:2'];
@@ -151,14 +152,17 @@ window.addEventListener('keydown', e => {
     if (e.code === 'ArrowRight') { currentType = (currentType+1)%6; updateHUD(); }
     if (e.code === 'ArrowLeft')  { currentType = (currentType+5)%6; updateHUD(); }
     if (e.code === 'KeyR') { for(let k=0;k<5;k++) setTimeout(()=>fire(),k*120); }
+    if (e.key === '+' || e.key === '=') orbitSpeed = Math.min(orbitSpeed + 0.006, 0.12);
+    if (e.key === '-')                  orbitSpeed = Math.max(orbitSpeed - 0.006, 0);
 });
 canvas.addEventListener('click', fire);
 
-// Slow orbit so you can see 3D shape
+// Orbit speed: +/- keys to adjust
+let orbitSpeed = 0.018;
 let t = 0;
 function animate() {
     requestAnimationFrame(animate);
-    t += 0.003;
+    t += orbitSpeed;
     camera.position.x = Math.sin(t) * 80;
     camera.position.z = Math.cos(t) * 80;
     camera.lookAt(0, 0, 0);
