@@ -483,11 +483,31 @@
         const _audioFwd = new THREE.Vector3();
         const _audioUp = new THREE.Vector3();
 
+        // Shared waveshaper curve — soft clip to generate harmonics from the thump oscillator,
+        // making low frequencies audible on small phone speakers that can't reproduce true bass.
+        const _shaperCurve = (() => {
+            const c = new Float32Array(256);
+            for (let i = 0; i < 256; i++) {
+                const x = (i * 2) / 256 - 1;
+                c[i] = (Math.PI + 200) * x / (Math.PI + 200 * Math.abs(x));
+            }
+            return c;
+        })();
+
         function playExplosion(pos, shellType) {
             if (!audioCtx) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
             const ctx = audioCtx;
             const now = ctx.currentTime;
+
+            // Compressor adds punch and prevents clipping when many fireworks overlap
+            const comp = ctx.createDynamicsCompressor();
+            comp.threshold.value = -6;
+            comp.knee.value = 3;
+            comp.ratio.value = 4;
+            comp.attack.value = 0.001;
+            comp.release.value = 0.1;
+            comp.connect(ctx.destination);
 
             const panner = ctx.createPanner();
             panner.panningModel = 'HRTF';
@@ -495,38 +515,62 @@
             panner.refDistance = 30;
             panner.rolloffFactor = 1;
             panner.setPosition(pos.x, pos.y, pos.z);
-            panner.connect(ctx.destination);
+            panner.connect(comp);
 
-            // Bang: sharp filtered noise burst
-            const bangDur = 0.15;
-            const bangBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bangDur), ctx.sampleRate);
-            const bangData = bangBuf.getChannelData(0);
-            for (let i = 0; i < bangData.length; i++) bangData[i] = Math.random() * 2 - 1;
-            const bangSrc = ctx.createBufferSource();
-            bangSrc.buffer = bangBuf;
-            const bangFilter = ctx.createBiquadFilter();
-            bangFilter.type = 'highpass';
-            bangFilter.frequency.value = shellType === 1 ? 250 : shellType === 3 ? 900 : 420;
-            const bangGain = ctx.createGain();
-            bangGain.gain.setValueAtTime(0.8, now);
-            bangGain.gain.exponentialRampToValueAtTime(0.001, now + bangDur);
-            bangSrc.connect(bangFilter);
-            bangFilter.connect(bangGain);
-            bangGain.connect(panner);
-            bangSrc.start(now);
+            // Thump: triangle oscillator at 150Hz (phone-audible range) pitch-dropping to 60Hz,
+            // passed through a waveshaper so the harmonics survive small speakers.
+            const thumpFreq = shellType === 1 ? 120 : shellType === 3 ? 180 : 150;
+            const thumpOsc = ctx.createOscillator();
+            thumpOsc.type = 'triangle';
+            thumpOsc.frequency.setValueAtTime(thumpFreq, now);
+            thumpOsc.frequency.exponentialRampToValueAtTime(thumpFreq * 0.4, now + 0.3);
+            const shaper = ctx.createWaveShaper();
+            shaper.curve = _shaperCurve;
+            const thumpGain = ctx.createGain();
+            thumpGain.gain.setValueAtTime(shellType === 3 ? 0.4 : 0.75, now);
+            thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            thumpOsc.connect(shaper);
+            shaper.connect(thumpGain);
+            thumpGain.connect(panner);
+            thumpOsc.start(now);
+            thumpOsc.stop(now + 0.35);
 
-            // Boom: low-frequency thump that pitch-drops
-            const boomOsc = ctx.createOscillator();
-            boomOsc.type = 'sine';
-            boomOsc.frequency.setValueAtTime(60 + Math.random() * 25, now);
-            boomOsc.frequency.exponentialRampToValueAtTime(20, now + 0.7);
-            const boomGain = ctx.createGain();
-            boomGain.gain.setValueAtTime(shellType === 3 ? 0.25 : 0.6, now);
-            boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-            boomOsc.connect(boomGain);
-            boomGain.connect(panner);
-            boomOsc.start(now);
-            boomOsc.stop(now + 0.7);
+            // Body: bandpass noise centred where phone speakers have actual output (300–600Hz)
+            const bodyDur = shellType === 3 ? 0.08 : 0.14;
+            const bodyBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * bodyDur), ctx.sampleRate);
+            const bodyData = bodyBuf.getChannelData(0);
+            for (let i = 0; i < bodyData.length; i++) bodyData[i] = Math.random() * 2 - 1;
+            const bodySrc = ctx.createBufferSource();
+            bodySrc.buffer = bodyBuf;
+            const bodyFilter = ctx.createBiquadFilter();
+            bodyFilter.type = 'bandpass';
+            bodyFilter.frequency.value = shellType === 1 ? 300 : shellType === 3 ? 600 : 420;
+            bodyFilter.Q.value = 0.7;
+            const bodyGain = ctx.createGain();
+            bodyGain.gain.setValueAtTime(1.0, now);
+            bodyGain.gain.exponentialRampToValueAtTime(0.001, now + bodyDur);
+            bodySrc.connect(bodyFilter);
+            bodyFilter.connect(bodyGain);
+            bodyGain.connect(panner);
+            bodySrc.start(now);
+
+            // Sizzle tail: slow-decaying high-frequency noise (burning sparks)
+            const sizzleDur = 0.6 + Math.random() * 0.5;
+            const sizzleBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * sizzleDur), ctx.sampleRate);
+            const sizzleData = sizzleBuf.getChannelData(0);
+            for (let i = 0; i < sizzleData.length; i++) sizzleData[i] = Math.random() * 2 - 1;
+            const sizzleSrc = ctx.createBufferSource();
+            sizzleSrc.buffer = sizzleBuf;
+            const sizzleFilter = ctx.createBiquadFilter();
+            sizzleFilter.type = 'highpass';
+            sizzleFilter.frequency.value = 3000;
+            const sizzleGain = ctx.createGain();
+            sizzleGain.gain.setValueAtTime(0.12, now);
+            sizzleGain.gain.exponentialRampToValueAtTime(0.001, now + sizzleDur);
+            sizzleSrc.connect(sizzleFilter);
+            sizzleFilter.connect(sizzleGain);
+            sizzleGain.connect(panner);
+            sizzleSrc.start(now);
 
             // Crackle: Chrysanthemum gets extra pops spread over time
             if (shellType === 2) {
