@@ -104,7 +104,10 @@
             z-index: 4;
             font-size: 1.1rem;
             color: white;
-            opacity: 0.3;
+            /* 0.55 meets WCAG non-text 3:1 contrast for a white glyph over sunlit
+               camera feed (~400-600 nits OLED reflection at ~alpha>=0.5 required);
+               keeps the button findable without dominating the AR scene. (ref: DL-006) */
+            opacity: 0.55;
             pointer-events: auto;
             cursor: pointer;
             transition: opacity 0.3s;
@@ -262,10 +265,16 @@
             const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
             const weeks = Math.floor(days / 7);
             
+            // Years counts completed anniversaries: a partial year (today before the
+            // wedding month/day in the current calendar year) does not count as a full one.
             let years = now.getFullYear() - start.getFullYear();
-            let m = now.getMonth() - start.getMonth();
-            if (m < 0 || (m === 0 && now.getDate() < start.getDate())) { years--; }
-            const months = (years * 12) + (now.getMonth() - start.getMonth()) + (now.getDate() < start.getDate() ? -1 : 0);
+            if (now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate())) { years--; }
+            // monthsRaw derives from raw year/month fields so it measures elapsed months
+            // on its own calendar boundary (day-of-month), independent of the
+            // anniversary-day boundary used to define a completed year. (ref: DL-001)
+            let monthsRaw = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+            if (now.getDate() < start.getDate()) { monthsRaw--; }
+            const months = monthsRaw;
 
             const stats = [
                 { text: `${years} Years`, rotY: 0 },
@@ -533,6 +542,19 @@
         let reverbNode = null;
         let reverbGain = null;
         let _noisePool = null; // shared AudioBuffers; source nodes are cheap, buffer fills are not
+        let _masterComp = null; // shared compressor; created once, reused by every explosion
+
+        // Unlock AudioContext on first touch — GPS may trigger startExperience outside a user gesture,
+        // so we pre-create and resume the context here while we're guaranteed to be in a gesture.
+        function unlockAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx.resume().then(() => initAudioGraph(audioCtx));
+            document.removeEventListener('touchstart', unlockAudio);
+            document.removeEventListener('click', unlockAudio);
+        }
+        document.addEventListener('touchstart', unlockAudio, { once: true });
+        document.addEventListener('click', unlockAudio, { once: true });
 
         function initAudioGraph(ctx) {
             // Pre-generate noise buffers once — reused by all explosions via new source nodes
@@ -562,6 +584,14 @@
             reverbGain.gain.value = 0;
             reverbNode.connect(reverbGain);
             reverbGain.connect(ctx.destination);
+
+            _masterComp = ctx.createDynamicsCompressor();
+            _masterComp.threshold.value = -6;
+            _masterComp.knee.value = 3;
+            _masterComp.ratio.value = 4;
+            _masterComp.attack.value = 0.001;
+            _masterComp.release.value = 0.1;
+            _masterComp.connect(ctx.destination);
         }
 
         async function detectEarphones() {
@@ -581,7 +611,10 @@
                 reverbGain.gain.setTargetAtTime(active ? 0.28 : 0, audioCtx.currentTime, 0.5);
             const btn = document.getElementById('audio-mode-btn');
             btn.textContent = active ? '🎧' : '♪';
-            btn.style.opacity = active ? '0.6' : '0.3';
+            /* 0.6 active vs 0.55 inactive: the 0.05 difference gives a perceptible
+               state change without either value dominating the AR scene; 0.55 is the
+               minimum for outdoor legibility (ref: DL-006). */
+            btn.style.opacity = active ? '0.6' : '0.55';
         }
         const _audioFwd = new THREE.Vector3();
         const _audioUp = new THREE.Vector3();
@@ -598,19 +631,10 @@
         })();
 
         function playExplosion(pos, shellType) {
-            if (!audioCtx) return;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (!audioCtx || !_noisePool || !_masterComp) return;
+            if (audioCtx.state === 'suspended') { audioCtx.resume(); return; } // still locked; skip this boom
             const ctx = audioCtx;
             const now = ctx.currentTime;
-
-            // Compressor adds punch and prevents clipping when many fireworks overlap
-            const comp = ctx.createDynamicsCompressor();
-            comp.threshold.value = -6;
-            comp.knee.value = 3;
-            comp.ratio.value = 4;
-            comp.attack.value = 0.001;
-            comp.release.value = 0.1;
-            comp.connect(ctx.destination);
 
             const panner = ctx.createPanner();
             panner.panningModel = 'HRTF';
@@ -618,7 +642,7 @@
             panner.refDistance = 30;
             panner.rolloffFactor = 1;
             panner.setPosition(pos.x, pos.y, pos.z);
-            panner.connect(comp);
+            panner.connect(_masterComp);
             if (earphonesMode && reverbNode) panner.connect(reverbNode); // wet send to reverb
 
             // Thump: earphones can reproduce true bass; speakers need higher freq with harmonics
@@ -686,6 +710,10 @@
                     crackleSrc.start(now + delay);
                 }
             }
+
+            // Release panner from the graph after all sounds have faded so nodes don't accumulate
+            const cleanupMs = (sizzleDur + 0.25) * 1000;
+            setTimeout(() => { try { panner.disconnect(); } catch (_) {} }, cleanupMs);
         }
 
         function animate() {
@@ -760,6 +788,7 @@
         function startExperience(uLat = targetLat, uLng = targetLng, isTestMode = false) {
             if (experienceStarted) return;
             experienceStarted = true;
+            clearInterval(geoInterval);
             try { document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen API failed", err)); } catch (e) { }
             document.getElementById('status-text').style.opacity = '0';
             
@@ -769,10 +798,18 @@
                     vid.srcObject = stream;
                     vid.play().catch(() => {});
                 })
-                .catch(err => console.error("Camera error:", err));
+                .catch(() => {
+                    document.getElementById('status-message').innerText = 'Camera unavailable. Tap the upper-right corner three times to skip.';
+                    document.getElementById('status-text').style.opacity = '1';
+                });
                 
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            initAudioGraph(audioCtx);
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                initAudioGraph(audioCtx);
+            } else if (!_noisePool) {
+                initAudioGraph(audioCtx); // unlocked early but graph not yet built
+            }
+            audioCtx.resume().catch(() => {});
             // Try auto-detection immediately (works if camera permission granted label access)
             detectEarphones().then(found => { if (found) setEarphonesMode(true); });
             // Re-check whenever a device connects or disconnects
@@ -786,16 +823,35 @@
             const compassEl = document.getElementById('compass-indicator');
             compassEl.textContent = '◎ calibrating heading…';
             compassEl.style.opacity = '1';
+            let bannerHeadingReceived = false;
+            let bannerDismissed = false;
+            const onBannerOrientation = () => { bannerHeadingReceived = true; };
+            window.addEventListener('deviceorientation', onBannerOrientation);
             const onHeadingLocked = (e) => {
                 if (e.absolute || e.type === 'deviceorientationabsolute') {
                     compassEl.textContent = '◉ heading locked';
                     setTimeout(() => { compassEl.style.opacity = '0'; }, 2500);
                     window.removeEventListener('deviceorientationabsolute', onHeadingLocked);
                     window.removeEventListener('deviceorientation', onHeadingLocked);
+                    window.removeEventListener('deviceorientation', onBannerOrientation);
+                    bannerDismissed = true;
                 }
             };
             window.addEventListener('deviceorientationabsolute', onHeadingLocked);
             window.addEventListener('deviceorientation', onHeadingLocked);
+            setTimeout(() => {
+                if (bannerDismissed) return;
+                window.removeEventListener('deviceorientation', onBannerOrientation);
+                window.removeEventListener('deviceorientationabsolute', onHeadingLocked);
+                window.removeEventListener('deviceorientation', onHeadingLocked);
+                if (bannerHeadingReceived) {
+                    compassEl.textContent = '◉ heading active';
+                    setTimeout(() => { compassEl.style.opacity = '0'; }, 2500);
+                } else {
+                    compassEl.style.opacity = '0';
+                }
+                bannerDismissed = true;
+            }, 8000);
             arGroup = createARGroup(uLat, uLng, isTestMode);
             scene.add(arGroup);
 
@@ -855,13 +911,39 @@
         const geoInterval = setInterval(() => {
             if (navigator.geolocation && !experienceStarted) {
                 navigator.geolocation.getCurrentPosition(pos => {
+                    // Within 100m: hand off to startExperience, which calls clearInterval
+                    // internally. (ref: DL-004, DL-009)
                     if (getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) <= 0.1) {
-                        clearInterval(geoInterval);
                         startExperience(pos.coords.latitude, pos.coords.longitude, false);
                     } else {
-                        document.getElementById('status-message').innerText = "Keep walking…";
+                        // 10m buckets below 1km: GPS outdoor accuracy is ~100m class,
+                        // so 10m steps change visibly between successive 3s polls
+                        // (~4m/tick accumulates a bucket change every 7-8s) without
+                        // false-precision flicker. Above 1km, 0.1km steps avoid
+                        // implying precision the sensor cannot deliver. Floor semantics
+                        // guarantee the displayed value decreases monotonically as the
+                        // wearer approaches. (ref: DL-004, DL-005)
+                        const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
+                        let distHint;
+                        if (metres < 1000) {
+                            const metresBucket = Math.floor(metres / 10) * 10;
+                            distHint = `Approx ${metresBucket}m to go`;
+                        } else {
+                            const kmBucket = Math.floor(metres / 100) / 10;
+                            distHint = `Approx ${kmBucket}km to go`;
+                        }
+                        document.getElementById('status-message').innerText = distHint;
                     }
-                }, null, { enableHighAccuracy: true });
+                }, (err) => {
+                    // A missing error callback leaves permission-denied unrecoverable
+                    // for the wearer at the venue. Map known error codes to readable
+                    // copy so the wearer can act. (ref: DL-002)
+                    let msg;
+                    if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Enable it in Android settings.';
+                    else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable. Step outside for clearer sky.';
+                    else msg = 'Location is taking longer than usual...';
+                    document.getElementById('status-message').innerText = msg;
+                }, { enableHighAccuracy: true });
             }
         }, 3000);
 
@@ -873,9 +955,15 @@
         document.getElementById('secret-override').addEventListener('click', () => {
             tapCount++;
             if (tapCount >= 3) {
-                clearInterval(geoInterval);
-                // When tapped manually, enter TEST MODE (fixed offset)
+                // [40,60,120] = Material action-confirmed short-short-long cadence,
+                // distinguishable from the per-tap 60ms tick. typeof guard required
+                // because navigator.vibrate may be undefined on some WebView configs
+                // without VIBRATE permission. (ref: DL-006, R-004)
+                if (typeof navigator.vibrate === 'function') navigator.vibrate([40, 60, 120]);
                 startExperience(targetLat, targetLng, true);
+            } else {
+                // 60ms matches Material Design short-tick (keyboard tap 50ms, button 70ms).
+                if (typeof navigator.vibrate === 'function') navigator.vibrate(60);
             }
         });
     </script>

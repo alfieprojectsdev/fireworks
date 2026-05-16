@@ -6,6 +6,13 @@ A high-fidelity, location-based Augmented Reality (AR) experience built to celeb
 
 Built as a tribute for **May 15th**, the application uses the phone's camera, GPS, and magnetometer (compass) to anchor a 3D celebration to the real world.
 
+## 🌙 Optimal Viewing Conditions
+
+**Time of Day (Night/Twilight Required)**
+This experience relies heavily on WebGL **Additive Blending** (`THREE.AdditiveBlending`) to give the fireworks and text their luminous, glowing appearance. Because additive blending adds virtual light to the physical camera feed, **this application is strictly designed for nighttime or late twilight viewing**. 
+
+If viewed against a bright daytime sky, the additive light values will peak, causing the fireworks and marquee to wash out and become invisible against the bright background.
+
 ### Key Features
 
 * **Geospatial Anchoring:** Unlike standard "sticker" AR, these fireworks are mathematically locked to the **Parish of the Holy Sacrifice** (`14.6588, 121.0711`). No matter where you turn or walk, the display stays fixed over the church.
