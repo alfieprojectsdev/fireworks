@@ -252,8 +252,8 @@
                 blending: THREE.AdditiveBlending, depthWrite: false,
                 side: THREE.DoubleSide
             });
-            // Large radius so user can walk inside
-            const mGeo = new THREE.CylinderGeometry(20, 20, 4, 64, 1, true);
+            // 30m radius = 60m diameter, clearing the 55m chapel dome
+            const mGeo = new THREE.CylinderGeometry(30, 30, 4, 64, 1, true);
             marqueeCylinder = new THREE.Mesh(mGeo, mMat);
             group.add(marqueeCylinder);
 
@@ -304,7 +304,7 @@
                 
                 sMesh.position.set(0, -10, 0); // below marquee
                 sMesh.rotation.y = stat.rotY;
-                sMesh.translateZ(20); // push outwards to form a square ring matching cylinder radius
+                sMesh.translateZ(30); // push outwards to match the 30m cylinder radius
                 
                 sMesh.userData.isStat = true;
                 group.add(sMesh);
