@@ -269,7 +269,7 @@
                 blending: THREE.AdditiveBlending, depthWrite: false,
                 side: THREE.DoubleSide
             });
-            // 30m radius = 60m diameter, clearing the 55m chapel dome
+            // Radius sized to clear the chapel dome (~55m wide).
             const mGeo = new THREE.CylinderGeometry(30, 30, 4, 64, 1, true);
             marqueeCylinder = new THREE.Mesh(mGeo, mMat);
             group.add(marqueeCylinder);
@@ -321,7 +321,7 @@
                 
                 sMesh.position.set(0, -10, 0); // below marquee
                 sMesh.rotation.y = stat.rotY;
-                sMesh.translateZ(30); // push outwards to match the 30m cylinder radius
+                sMesh.translateZ(30);
                 
                 sMesh.userData.isStat = true;
                 group.add(sMesh);
@@ -806,6 +806,7 @@
             if (experienceStarted) return;
             experienceStarted = true;
             clearInterval(geoInterval);
+            document.getElementById('debug-hud').style.display = 'none';
             try { document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen API failed", err)); } catch (e) { }
             document.getElementById('status-text').style.opacity = '0';
             
