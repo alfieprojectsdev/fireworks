@@ -97,6 +97,22 @@
             margin-top: 24px;
         }
 
+        #debug-hud {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 4;
+            font-family: monospace;
+            font-size: 0.72rem;
+            color: #fff;
+            background: rgba(0,0,0,0.45);
+            border-radius: 6px;
+            padding: 6px 10px;
+            line-height: 1.7;
+            pointer-events: none;
+            text-align: right;
+        }
+
         #audio-mode-btn {
             position: absolute;
             bottom: 20px;
@@ -161,6 +177,7 @@
     <div id="audio-mode-btn" title="Toggle earphone mode">♪</div>
     <div id="compass-indicator"></div>
     <div id="secret-override"></div>
+    <div id="debug-hud">acquiring GPS…</div>
 
     <script>
         if (window.BUILD_VERSION) {
@@ -913,7 +930,11 @@
                 navigator.geolocation.getCurrentPosition(pos => {
                     // Within 100m: hand off to startExperience, which calls clearInterval
                     // internally. (ref: DL-004, DL-009)
-                    if (getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) <= 0.1) {
+                    const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
+                    const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
+                    document.getElementById('debug-hud').innerHTML =
+                        `dist: ${Math.round(metres)}m<br>trigger: ≤100m<br>GPS acc: ±${acc}m`;
+                    if (metres <= 100) {
                         startExperience(pos.coords.latitude, pos.coords.longitude, false);
                     } else {
                         // 10m buckets below 1km: GPS outdoor accuracy is ~100m class,
@@ -923,7 +944,6 @@
                         // implying precision the sensor cannot deliver. Floor semantics
                         // guarantee the displayed value decreases monotonically as the
                         // wearer approaches. (ref: DL-004, DL-005)
-                        const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
                         let distHint;
                         if (metres < 1000) {
                             const metresBucket = Math.floor(metres / 10) * 10;
@@ -943,6 +963,7 @@
                     else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable. Step outside for clearer sky.';
                     else msg = 'Location is taking longer than usual...';
                     document.getElementById('status-message').innerText = msg;
+                    document.getElementById('debug-hud').innerHTML = `GPS error ${err.code}`;
                 }, { enableHighAccuracy: true });
             }
         }, 3000);
