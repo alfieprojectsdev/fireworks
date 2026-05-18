@@ -183,7 +183,6 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
     // _webGeoIntervalId is owned by sensors.js; sensors.js clears it on entry to this function
     // via the clearWebGeoInterval() call before startExperience() is invoked.
 
-    document.getElementById('debug-hud').style.display = 'none';
     try { document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
     document.getElementById('status-text').style.opacity = '0';
 

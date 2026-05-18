@@ -98,6 +98,7 @@
         }
 
         #debug-hud {
+            display: none;
             position: absolute;
             bottom: 20px;
             right: 20px;
@@ -111,6 +112,16 @@
             line-height: 1.7;
             pointer-events: none;
             text-align: right;
+        }
+
+        #hud-toggle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 80px;
+            height: 80px;
+            z-index: 9999;
+            pointer-events: auto;
         }
 
         #audio-mode-btn {
@@ -178,6 +189,7 @@
     <div id="compass-indicator"></div>
     <div id="secret-override"></div>
     <div id="debug-hud">acquiring GPS…</div>
+    <div id="hud-toggle"></div>
 
     <script type="module">
         import { initScene, startExperience, TARGET_LAT, TARGET_LNG } from './js/scene.js';
@@ -192,6 +204,19 @@
         bootstrapSensors();
 
         document.getElementById('audio-mode-btn').addEventListener('click', toggleEarphonesMode);
+
+        let hudTapCount = 0;
+        let hudTapTimer = null;
+        document.getElementById('hud-toggle').addEventListener('click', () => {
+            hudTapCount++;
+            clearTimeout(hudTapTimer);
+            hudTapTimer = setTimeout(() => { hudTapCount = 0; }, 600);
+            if (hudTapCount >= 3) {
+                hudTapCount = 0;
+                const hud = document.getElementById('debug-hud');
+                hud.style.display = hud.style.display === 'block' ? 'none' : 'block';
+            }
+        });
 
         let tapCount = 0;
         document.getElementById('secret-override').addEventListener('click', () => {
