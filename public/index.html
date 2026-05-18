@@ -197,7 +197,7 @@
                     const { metres, isArrived } = checkProximity(pos.coords.latitude, pos.coords.longitude);
                     const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
                     document.getElementById('debug-hud').innerHTML =
-                        `dist: ${Math.round(metres)}m<br>trigger: ≤650m<br>GPS acc: ±${acc}m`;
+                        `dist: ${Math.round(metres)}m<br>trigger: ≤1800m<br>GPS acc: ±${acc}m`;
                     if (isArrived) {
                         clearInterval(geoInterval);
                         experienceStarted = true;

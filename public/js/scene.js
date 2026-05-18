@@ -9,6 +9,7 @@ let scene, camera, renderer, controls;
 let showFireworks = false;
 let arGroup = null;
 let marqueeCylinder = null;
+let beaconBaseOpacity = 0;
 let marqueeBaseOpacity = 0;
 let statsBaseOpacity = 0;
 let userDistanceToChurch = Infinity;
@@ -35,7 +36,7 @@ export function initScene() {
 
 export function checkProximity(lat, lng) {
     const metres = getDistanceKm(lat, lng, TARGET_LAT, TARGET_LNG) * 1000;
-    return { metres, isArrived: metres <= 650 };
+    return { metres, isArrived: metres <= 1800 };
 }
 
 function _createARGroup(userLat, userLng, isTestMode) {
@@ -72,6 +73,17 @@ function _createARGroup(userLat, userLng, isTestMode) {
     const mGeo = new THREE.CylinderGeometry(30, 30, 4, 64, 1, true);
     marqueeCylinder = new THREE.Mesh(mGeo, mMat);
     group.add(marqueeCylinder);
+
+    // ACT 0: Orbital Beacon — 2 km pillar of light visible from PHIVOLCS rooftop (~1.5 km)
+    const beaconMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0.85, 0.95, 1.0), // icy cyan-white
+        transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+    });
+    const beaconMesh = new THREE.Mesh(new THREE.CylinderGeometry(8, 8, 2000, 32, 1, true), beaconMat);
+    beaconMesh.position.y = 1000; // base at church ground level, top at 2000 m
+    beaconMesh.userData.isBeacon = true;
+    group.add(beaconMesh);
 
     // Time stats panels
     const start = new Date('2008-05-15T00:00:00');
@@ -226,8 +238,7 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
         }, 50);
     }, 60000);
 
-    // ACT 1 begins immediately — fireworks fire as the beacon the moment experience starts.
-    showFireworks = true;
+    // showFireworks is now driven by distance in _animate() — no longer set here.
 
     if (isTestMode) {
         userDistanceToChurch = 0;
@@ -258,6 +269,21 @@ function _animate() {
         tickIllumination();
         const textIllumination = getTextIllumination();
 
+        // ACT 0: Orbital Beacon — fades in 1800→1500m, holds solid, fades out 800→650m
+        let beaconTarget = 0;
+        if (userDistanceToChurch <= 1800 && userDistanceToChurch > 650) {
+            if (userDistanceToChurch > 1500) {
+                beaconTarget = Math.max(0, 1 - ((userDistanceToChurch - 1500) / 300));
+            } else if (userDistanceToChurch < 800) {
+                beaconTarget = Math.max(0, (userDistanceToChurch - 650) / 150);
+            } else {
+                beaconTarget = 1.0;
+            }
+        }
+
+        // ACT 1: Fireworks fire ≤800m; suppressed above to save GPU on the rooftop view
+        showFireworks = userDistanceToChurch <= 800;
+
         // ACT 2: Marquee materialises from 400m, fully opaque by 150m
         const marqueeTarget = userDistanceToChurch <= 400
             ? Math.max(0, 1 - ((userDistanceToChurch - 150) / 250)) : 0;
@@ -266,6 +292,7 @@ function _animate() {
         const statsTarget = userDistanceToChurch <= 100
             ? Math.max(0, 1 - ((userDistanceToChurch - 40) / 60)) : 0;
 
+        beaconBaseOpacity  += (beaconTarget  * 0.7 - beaconBaseOpacity)  * 0.02;
         marqueeBaseOpacity += (marqueeTarget * 0.8 - marqueeBaseOpacity) * 0.02;
         statsBaseOpacity   += (statsTarget   * 0.8 - statsBaseOpacity)   * 0.02;
 
@@ -274,6 +301,8 @@ function _animate() {
                 child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);
             } else if (child.userData.isStat) {
                 child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
+            } else if (child.userData.isBeacon) {
+                child.material.opacity = beaconBaseOpacity;
             } else if (child.userData.isGround) {
                 child.material.opacity = 0.025 + 0.015 * Math.sin(performance.now() * 0.0006);
             } else if (child.userData.isMessageCylinder) {
