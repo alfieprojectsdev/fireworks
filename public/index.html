@@ -229,8 +229,9 @@
         let arGroup;
         let marqueeCylinder;
         let textIllumination = 0;
-        let marqueeBaseOpacity = 0; // driven by proximity ≤30m
-        let statsBaseOpacity = 0;   // driven by proximity ≤20m
+        let beaconBaseOpacity = 0;   // driven by proximity 1800→650m
+        let marqueeBaseOpacity = 0;  // driven by proximity 400→150m
+        let statsBaseOpacity = 0;    // driven by proximity 100→40m
         let userDistanceToChurch = Infinity; // metres, updated by watchPosition
 
         function createARGroup(userLat, userLng, isTestMode = false) {
@@ -282,6 +283,19 @@
             const mGeo = new THREE.CylinderGeometry(30, 30, 4, 64, 1, true);
             marqueeCylinder = new THREE.Mesh(mGeo, mMat);
             group.add(marqueeCylinder);
+
+            // ACT 0: Orbital Beacon — 2 km pillar visible from PHIVOLCS rooftop (~1.5 km away)
+            const beaconMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(8, 8, 2000, 32, 1, true),
+                new THREE.MeshBasicMaterial({
+                    color: new THREE.Color(0.85, 0.95, 1.0), // icy cyan-white
+                    transparent: true, opacity: 0,
+                    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+                })
+            );
+            beaconMesh.position.y = 1000; // base at church ground level, apex at 2000 m
+            beaconMesh.userData.isBeacon = true;
+            group.add(beaconMesh);
 
             // 3. Time Stats
             const start = new Date('2008-05-15T00:00:00');
@@ -767,17 +781,37 @@
                 if (textIllumination < 0) textIllumination = 0;
             }
             if (arGroup) {
-                // Lerp base opacities toward proximity targets
-                const marqueeTarget = userDistanceToChurch <= 30 ? 0.8 : 0;
-                const statsTarget   = userDistanceToChurch <= 20 ? 0.8 : 0;
-                marqueeBaseOpacity += (marqueeTarget - marqueeBaseOpacity) * 0.008;
-                statsBaseOpacity   += (statsTarget   - statsBaseOpacity)   * 0.008;
+                // ACT 0: Beacon fades in 1800→1500m, holds solid 1500→800m, fades out 800→650m
+                let beaconTarget = 0;
+                if (userDistanceToChurch <= 1800 && userDistanceToChurch > 650) {
+                    if (userDistanceToChurch > 1500) {
+                        beaconTarget = Math.max(0, 1 - ((userDistanceToChurch - 1500) / 300));
+                    } else if (userDistanceToChurch < 800) {
+                        beaconTarget = Math.max(0, (userDistanceToChurch - 650) / 150);
+                    } else {
+                        beaconTarget = 1.0;
+                    }
+                }
+                // ACT 1: Fireworks ≤800m; suppressed above to save GPU during the approach
+                showFireworks = userDistanceToChurch <= 800;
+                // ACT 2: Marquee materialises 400→150m
+                const marqueeTarget = userDistanceToChurch <= 400
+                    ? Math.max(0, 1 - ((userDistanceToChurch - 150) / 250)) : 0;
+                // ACT 3: Stat panels emerge 100→40m
+                const statsTarget = userDistanceToChurch <= 100
+                    ? Math.max(0, 1 - ((userDistanceToChurch - 40) / 60)) : 0;
+
+                beaconBaseOpacity  += (beaconTarget  * 0.7 - beaconBaseOpacity)  * 0.02;
+                marqueeBaseOpacity += (marqueeTarget  * 0.8 - marqueeBaseOpacity) * 0.02;
+                statsBaseOpacity   += (statsTarget    * 0.8 - statsBaseOpacity)   * 0.02;
 
                 arGroup.children.forEach(child => {
                     if (child === marqueeCylinder) {
                         child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);
                     } else if (child.userData.isStat) {
                         child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
+                    } else if (child.userData.isBeacon) {
+                        child.material.opacity = beaconBaseOpacity;
                     } else if (child.userData.isGround) {
                         child.material.opacity = 0.025 + 0.015 * Math.sin(performance.now() * 0.0006);
                     } else if (child.userData.isMessageCylinder) {
@@ -932,6 +966,9 @@
                 // Test mode: simulate standing at the church — reveal everything immediately
                 userDistanceToChurch = 0;
             } else if (!window.__nativeLocationActive) { // Native path already updating userDistanceToChurch (ref: DL-003, DL-010)
+                // Seed from the triggering fix so the opacity lerp starts with a real distance
+                // before the first watchPosition callback arrives.
+                userDistanceToChurch = getDistanceKm(uLat, uLng, targetLat, targetLng) * 1000;
                 // Production: keep tracking position to drive the proximity reveal
                 _watchId = navigator.geolocation.watchPosition(pos => {
                     userDistanceToChurch = getDistanceKm(
@@ -943,7 +980,7 @@
             setTimeout(() => {
                 document.getElementById('status-text').style.display = 'none';
                 document.getElementById('camera-bg').style.opacity = '1';
-                showFireworks = true;
+                // showFireworks is distance-driven in animate() — no longer set here
             }, 1000);
         }
 
@@ -963,7 +1000,7 @@
         /**
          * startWebGeoInterval — Fallback pre-trigger GPS polling via navigator.geolocation.
          * Starts a 3-second setInterval that calls getCurrentPosition and updates the
-         * debug HUD, triggers startExperience when within 100m, or shows a distance hint.
+         * debug HUD, triggers startExperience when within 1800m, or shows a distance hint.
          * Guard flag _webGeoIntervalStarted prevents multiple intervals from being
          * registered if both the start() fallback path and the 2s watchdog fire. (ref: DL-003)
          */
@@ -980,8 +1017,8 @@
                         const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
                         const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
                         document.getElementById('debug-hud').innerHTML =
-                            `dist: ${Math.round(metres)}m<br>trigger: ≤100m<br>GPS acc: ±${acc}m`;
-                        if (metres <= 100) {
+                            `dist: ${Math.round(metres)}m<br>trigger: ≤1800m<br>GPS acc: ±${acc}m`;
+                        if (metres <= 1800) {
                             startExperience(pos.coords.latitude, pos.coords.longitude, false);
                         } else {
                             // 10m buckets: GPS outdoor accuracy is ~100m class; 10m steps
@@ -1043,8 +1080,8 @@
                     const metres = getDistanceKm(data.latitude, data.longitude, targetLat, targetLng) * 1000;
                     const acc = data.accuracy != null ? Math.round(data.accuracy) : '?';
                     document.getElementById('debug-hud').innerHTML =
-                        `dist: ${Math.round(metres)}m<br>trigger: ≤100m<br>GPS acc: ±${acc}m`;
-                    if (!experienceStarted && metres <= 100) {
+                        `dist: ${Math.round(metres)}m<br>trigger: ≤1800m<br>GPS acc: ±${acc}m`;
+                    if (!experienceStarted && metres <= 1800) {
                         startExperience(data.latitude, data.longitude, false);
                     } else if (experienceStarted && !_isTestMode) {
                         userDistanceToChurch = metres;
