@@ -35,7 +35,7 @@ export function initScene() {
 
 export function checkProximity(lat, lng) {
     const metres = getDistanceKm(lat, lng, TARGET_LAT, TARGET_LNG) * 1000;
-    return { metres, isArrived: metres <= 100 };
+    return { metres, isArrived: metres <= 650 };
 }
 
 function _createARGroup(userLat, userLng, isTestMode) {
@@ -226,9 +226,15 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
         }, 50);
     }, 60000);
 
+    // ACT 1 begins immediately — fireworks fire as the beacon the moment experience starts.
+    showFireworks = true;
+
     if (isTestMode) {
         userDistanceToChurch = 0;
     } else {
+        // Seed from the triggering fix so the opacity lerp has a real distance before
+        // the first watchPosition callback arrives.
+        userDistanceToChurch = getDistanceKm(uLat, uLng, TARGET_LAT, TARGET_LNG) * 1000;
         navigator.geolocation.watchPosition(pos => {
             userDistanceToChurch = getDistanceKm(
                 pos.coords.latitude, pos.coords.longitude, TARGET_LAT, TARGET_LNG
@@ -239,7 +245,6 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
     setTimeout(() => {
         document.getElementById('status-text').style.display = 'none';
         document.getElementById('camera-bg').style.opacity = '1';
-        showFireworks = true;
     }, 1000);
 }
 
@@ -253,10 +258,16 @@ function _animate() {
         tickIllumination();
         const textIllumination = getTextIllumination();
 
-        const marqueeTarget = userDistanceToChurch <= 30 ? 0.8 : 0;
-        const statsTarget   = userDistanceToChurch <= 20 ? 0.8 : 0;
-        marqueeBaseOpacity += (marqueeTarget - marqueeBaseOpacity) * 0.008;
-        statsBaseOpacity   += (statsTarget   - statsBaseOpacity)   * 0.008;
+        // ACT 2: Marquee materialises from 400m, fully opaque by 150m
+        const marqueeTarget = userDistanceToChurch <= 400
+            ? Math.max(0, 1 - ((userDistanceToChurch - 150) / 250)) : 0;
+
+        // ACT 3: Stat panels emerge from 100m, fully opaque by 40m
+        const statsTarget = userDistanceToChurch <= 100
+            ? Math.max(0, 1 - ((userDistanceToChurch - 40) / 60)) : 0;
+
+        marqueeBaseOpacity += (marqueeTarget * 0.8 - marqueeBaseOpacity) * 0.02;
+        statsBaseOpacity   += (statsTarget   * 0.8 - statsBaseOpacity)   * 0.02;
 
         arGroup.children.forEach(child => {
             if (child === marqueeCylinder) {
