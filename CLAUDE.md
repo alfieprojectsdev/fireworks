@@ -26,7 +26,7 @@ There are no tests, no lint scripts, and no dev server—the app is static HTML.
 
 ## Architecture
 
-All meaningful logic lives in one file: **`public/index.html`**. It is entirely vanilla JS with Three.js loaded from CDN.
+Primary logic is split across two files: **`public/index.html`** (all JS, Three.js AR scene, GPS/sensor wiring) and **`android/app/src/main/java/com/alfie/anniversary/SensorBridgePlugin.java`** (Capacitor native plugin delivering GPS and orientation events with lower latency than the WebView APIs).
 
 **Layered rendering (z-index stack):**
 - `#camera-bg` (z=1): raw `<video>` element showing the rear camera
@@ -34,15 +34,17 @@ All meaningful logic lives in one file: **`public/index.html`**. It is entirely 
 - `#ui-layer` (z=3): "Locating…" status text shown before the experience triggers
 
 **Experience trigger logic:**
-- `setInterval` polls `navigator.geolocation` every 3 seconds
+- The native `SensorBridgePlugin` is the primary GPS and orientation source on Capacitor; `startWebGeoInterval()` (web geolocation `setInterval` at 3s) is the fallback when the native bridge does not deliver a location event within 2 seconds
 - Triggers `startExperience()` when within 100m of `targetLat/targetLng`
-- Secret: triple-tapping the invisible 100×100px `#secret-override` div (top-right corner) bypasses GPS and enters **test mode**, where the AR group spawns 40m ahead instead of over the real GPS coordinates
+- Secret: triple-tapping the invisible 100×100px `#secret-override` div (top-right corner) bypasses GPS and enters **test mode**, where the AR group spawns 40m ahead instead of over the real GPS coordinates. Each tap fires `navigator.vibrate(60)` for tactile confirmation; the third tap (which fires `startExperience`) uses pattern `navigator.vibrate([40, 60, 120])` so the wearer feels the bypass succeeded. The vibrate calls are typeof-guarded and no-op when the API is unavailable.
+- While polling, the splash status text shows the live distance to the church (10m steps under 1 km, 0.1 km steps above) instead of static "Locating...". Permission/timeout/availability errors from `getCurrentPosition` surface human-readable copy in the same status line so a denied permission no longer looks like a hung app.
 
 **3D scene structure (`createARGroup`):**
 - A `THREE.Group` positioned at the GPS-calculated offset from the user (X=East, Z=North in Three.js)
 - Cylindrical marquee: `CylinderGeometry` with a 4096px canvas texture wrapping "Happy Anniversary, Bhaze!" four times, with `DoubleSide` rendering so the user can walk inside it
 - Four `PlaneGeometry` stat panels (Years/Months/Weeks/Days since 2008-05-15) arranged in a square at 0°/90°/180°/270° facing outward, 20m radius
 - `DeviceOrientationControls` ties the virtual camera to the phone's physical compass + gyroscope
+- The compass-calibration banner is bounded by an 8-second timer; if `deviceorientationabsolute` never arrives the banner switches to "heading active" (when any `deviceorientation` event has been observed) or fades silently. The Three.js `DeviceOrientationControls` continues to drive the camera regardless of banner state.
 
 **Fireworks system (`Firework` class):**
 - Rockets use `THREE.LineSegments` for streak trails; explosions spawn 250–400 particles also rendered as line segments

@@ -7,7 +7,7 @@ android {
         applicationId "com.alfie.anniversary"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
+        versionCode 17
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -40,6 +40,10 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+    // Pinned to 21.3.0: LocationRequest.Builder fluent API (setMinUpdateIntervalMillis,
+    // Priority constants) stabilized in 21.x; explicit pin surfaces transitive upgrades
+    // at compile time instead of silently changing the API surface. (ref: DL-012)
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
 }
 
 apply from: 'capacitor.build.gradle'

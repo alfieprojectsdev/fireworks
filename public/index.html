@@ -122,7 +122,7 @@
             color: white;
             /* 0.55 meets WCAG non-text 3:1 contrast for a white glyph over sunlit
                camera feed (~400-600 nits OLED reflection at ~alpha>=0.5 required);
-               keeps the button findable without dominating the AR scene. (ref: DL-006) */
+               keeps the button findable without dominating the AR scene. */
             opacity: 0.55;
             pointer-events: auto;
             cursor: pointer;
@@ -193,6 +193,15 @@
 
         let controls;
         let showFireworks = false;
+
+        // True once the first onNativeOrientationUpdate event arrives.
+        // Guards the animate() loop: when true, controls.update() is skipped so the
+        // native quaternion written directly to camera.quaternion is not overwritten
+        // each frame. DeviceOrientationControls is still constructed and its internal
+        // listeners remain attached for fallback. (ref: DL-008, DL-009)
+        let nativeOrientationActive = false;
+        // Staging buffer for the incoming native quaternion before camera.quaternion.set().
+        let nativeQuat = new THREE.Quaternion();
 
         // --- Orchestration Variables ---
         const targetLat = 14.658888478751235;
@@ -288,7 +297,7 @@
             if (now.getMonth() < start.getMonth() || (now.getMonth() === start.getMonth() && now.getDate() < start.getDate())) { years--; }
             // monthsRaw derives from raw year/month fields so it measures elapsed months
             // on its own calendar boundary (day-of-month), independent of the
-            // anniversary-day boundary used to define a completed year. (ref: DL-001)
+            // anniversary-day boundary used to define a completed year.
             let monthsRaw = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
             if (now.getDate() < start.getDate()) { monthsRaw--; }
             const months = monthsRaw;
@@ -630,7 +639,7 @@
             btn.textContent = active ? '🎧' : '♪';
             /* 0.6 active vs 0.55 inactive: the 0.05 difference gives a perceptible
                state change without either value dominating the AR scene; 0.55 is the
-               minimum for outdoor legibility (ref: DL-006). */
+               minimum for outdoor legibility. */
             btn.style.opacity = active ? '0.6' : '0.55';
         }
         const _audioFwd = new THREE.Vector3();
@@ -736,7 +745,9 @@
         function animate() {
             requestAnimationFrame(animate);
             
-            if (controls) controls.update();
+            // Skip controls.update() when native path is active to avoid overwriting
+            // camera.quaternion set by the onNativeOrientationUpdate handler. (ref: DL-009)
+            if (controls && !nativeOrientationActive) controls.update();
 
             // Sync audio listener to phone orientation so panning follows head rotation
             if (audioCtx) {
@@ -805,7 +816,8 @@
         function startExperience(uLat = targetLat, uLng = targetLng, isTestMode = false) {
             if (experienceStarted) return;
             experienceStarted = true;
-            clearInterval(geoInterval);
+            // Clears the web geo interval if still running; null-guard prevents double-clear.
+            if (_webGeoIntervalId !== null) { clearInterval(_webGeoIntervalId); _webGeoIntervalId = null; }
             document.getElementById('debug-hud').style.display = 'none';
             try { document.documentElement.requestFullscreen().catch(err => console.log("Fullscreen API failed", err)); } catch (e) { }
             document.getElementById('status-text').style.opacity = '0';
@@ -843,6 +855,12 @@
             compassEl.style.opacity = '1';
             let bannerHeadingReceived = false;
             let bannerDismissed = false;
+            // onBannerOrientation tracks whether any orientation event has fired during
+            // the 8s window. Some Android sensor stacks never emit deviceorientationabsolute
+            // even when heading is functional, so the banner uses this flag to distinguish
+            // "heading working but not absolute" from "no sensor at all".
+            // The named reference is removed via removeEventListener; it does NOT touch
+            // DeviceOrientationControls' own internal listeners.
             const onBannerOrientation = () => { bannerHeadingReceived = true; };
             window.addEventListener('deviceorientation', onBannerOrientation);
             const onHeadingLocked = (e) => {
@@ -857,6 +875,9 @@
             };
             window.addEventListener('deviceorientationabsolute', onHeadingLocked);
             window.addEventListener('deviceorientation', onHeadingLocked);
+            // 8s timeout: typical mid-range Android magnetometer lock is 3-6s; doubling the
+            // upper bound covers cold-start near reinforced concrete without exceeding the
+            // ~10s wearer-tolerance threshold for unexplained UI elements.
             setTimeout(() => {
                 if (bannerDismissed) return;
                 window.removeEventListener('deviceorientation', onBannerOrientation);
@@ -910,9 +931,9 @@
             if (isTestMode) {
                 // Test mode: simulate standing at the church — reveal everything immediately
                 userDistanceToChurch = 0;
-            } else {
+            } else if (!window.__nativeLocationActive) { // Native path already updating userDistanceToChurch (ref: DL-003, DL-010)
                 // Production: keep tracking position to drive the proximity reveal
-                navigator.geolocation.watchPosition(pos => {
+                _watchId = navigator.geolocation.watchPosition(pos => {
                     userDistanceToChurch = getDistanceKm(
                         pos.coords.latitude, pos.coords.longitude, targetLat, targetLng
                     ) * 1000;
@@ -926,48 +947,129 @@
             }, 1000);
         }
 
-        const geoInterval = setInterval(() => {
-            if (navigator.geolocation && !experienceStarted) {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    // Within 100m: hand off to startExperience, which calls clearInterval
-                    // internally. (ref: DL-004, DL-009)
-                    const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
-                    const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
+        let _isTestMode = false;
+        let _watchId = null;
+
+        function formatDistanceHint(metres) {
+            if (metres < 1000) {
+                const metresBucket = Math.floor(metres / 10) * 10;
+                return `Approx ${metresBucket}m to go`;
+            } else {
+                const kmBucket = Math.floor(metres / 100) / 10;
+                return `Approx ${kmBucket}km to go`;
+            }
+        }
+
+        /**
+         * startWebGeoInterval — Fallback pre-trigger GPS polling via navigator.geolocation.
+         * Starts a 3-second setInterval that calls getCurrentPosition and updates the
+         * debug HUD, triggers startExperience when within 100m, or shows a distance hint.
+         * Guard flag _webGeoIntervalStarted prevents multiple intervals from being
+         * registered if both the start() fallback path and the 2s watchdog fire. (ref: DL-003)
+         */
+        let _webGeoIntervalStarted = false;
+        let _webGeoIntervalId = null;
+        function startWebGeoInterval() {
+            if (_webGeoIntervalStarted) return;
+            _webGeoIntervalStarted = true;
+            _webGeoIntervalId = setInterval(() => {
+                if (navigator.geolocation && !experienceStarted) {
+                    navigator.geolocation.getCurrentPosition(pos => {
+                        // startExperience clears _webGeoIntervalId on entry to prevent the interval
+                        // from polling while the AR scene is active.
+                        const metres = getDistanceKm(pos.coords.latitude, pos.coords.longitude, targetLat, targetLng) * 1000;
+                        const acc = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
+                        document.getElementById('debug-hud').innerHTML =
+                            `dist: ${Math.round(metres)}m<br>trigger: ≤100m<br>GPS acc: ±${acc}m`;
+                        if (metres <= 100) {
+                            startExperience(pos.coords.latitude, pos.coords.longitude, false);
+                        } else {
+                            // 10m buckets: GPS outdoor accuracy is ~100m class; 10m steps
+                            // change visibly between 3s polls at walking pace. 0.1km steps
+                            // above 1km avoid implying sub-100m precision.
+                            document.getElementById('status-message').innerText = formatDistanceHint(metres);
+                        }
+                    }, (err) => {
+                        // A missing error callback leaves permission-denied unrecoverable
+                        // for the wearer at the venue. Map known error codes to readable
+                        // copy so the wearer can act.
+                        let msg;
+                        if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Enable it in Android settings.';
+                        else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable. Step outside for clearer sky.';
+                        else msg = 'Location is taking longer than usual...';
+                        document.getElementById('status-message').innerText = msg;
+                        document.getElementById('debug-hud').innerHTML = `GPS error ${err.code}`;
+                    }, { enableHighAccuracy: true });
+                }
+            }, 3000);
+        }
+
+        let lastNativeLocationAt = 0;
+
+        /**
+         * bootstrapSensors — Entry point for the native sensor bridge initialization.
+         * Runs once at page load as an IIFE.
+         *
+         * Strategy (ref: DL-003, DL-008, DL-013):
+         * 1. If Capacitor.Plugins.SensorBridge is present, register listeners for both
+         *    onNativeOrientationUpdate and onNativeLocationUpdate, then call start().
+         * 2. start() resolves with status=fallback (permission denied) -> startWebGeoInterval().
+         * 3. A 2000ms watchdog fires startWebGeoInterval() if no location event has
+         *    arrived, covering GPS cold-start latency without blocking the splash transition.
+         * 4. If SensorBridge is absent (non-Capacitor environment), startWebGeoInterval()
+         *    runs immediately.
+         *
+         * onNativeOrientationUpdate sets nativeOrientationActive=true on first event,
+         * causing animate() to stop calling controls.update(). (ref: DL-008, DL-009)
+         * onNativeLocationUpdate guards isTestMode to prevent native GPS from overwriting
+         * the zeroed userDistanceToChurch during triple-tap test mode. (ref: DL-010)
+         */
+        (function bootstrapSensors() {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SensorBridge) {
+                const SensorBridge = window.Capacitor.Plugins.SensorBridge;
+
+                SensorBridge.addListener('onNativeOrientationUpdate', (data) => {
+                    nativeOrientationActive = true;
+                    camera.quaternion.set(data.x, data.y, data.z, data.w);
+                });
+
+                SensorBridge.addListener('onNativeLocationUpdate', (data) => {
+                    lastNativeLocationAt = Date.now();
+                    window.__nativeLocationActive = true;
+                    if (_watchId !== null) {
+                        navigator.geolocation.clearWatch(_watchId);
+                        _watchId = null;
+                    }
+                    const metres = getDistanceKm(data.latitude, data.longitude, targetLat, targetLng) * 1000;
+                    const acc = data.accuracy != null ? Math.round(data.accuracy) : '?';
                     document.getElementById('debug-hud').innerHTML =
                         `dist: ${Math.round(metres)}m<br>trigger: ≤100m<br>GPS acc: ±${acc}m`;
-                    if (metres <= 100) {
-                        startExperience(pos.coords.latitude, pos.coords.longitude, false);
-                    } else {
-                        // 10m buckets below 1km: GPS outdoor accuracy is ~100m class,
-                        // so 10m steps change visibly between successive 3s polls
-                        // (~4m/tick accumulates a bucket change every 7-8s) without
-                        // false-precision flicker. Above 1km, 0.1km steps avoid
-                        // implying precision the sensor cannot deliver. Floor semantics
-                        // guarantee the displayed value decreases monotonically as the
-                        // wearer approaches. (ref: DL-004, DL-005)
-                        let distHint;
-                        if (metres < 1000) {
-                            const metresBucket = Math.floor(metres / 10) * 10;
-                            distHint = `Approx ${metresBucket}m to go`;
-                        } else {
-                            const kmBucket = Math.floor(metres / 100) / 10;
-                            distHint = `Approx ${kmBucket}km to go`;
-                        }
-                        document.getElementById('status-message').innerText = distHint;
+                    if (!experienceStarted && metres <= 100) {
+                        startExperience(data.latitude, data.longitude, false);
+                    } else if (experienceStarted && !_isTestMode) {
+                        userDistanceToChurch = metres;
+                    } else if (!experienceStarted) {
+                        document.getElementById('status-message').innerText = formatDistanceHint(metres);
                     }
-                }, (err) => {
-                    // A missing error callback leaves permission-denied unrecoverable
-                    // for the wearer at the venue. Map known error codes to readable
-                    // copy so the wearer can act. (ref: DL-002)
-                    let msg;
-                    if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Enable it in Android settings.';
-                    else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable. Step outside for clearer sky.';
-                    else msg = 'Location is taking longer than usual...';
-                    document.getElementById('status-message').innerText = msg;
-                    document.getElementById('debug-hud').innerHTML = `GPS error ${err.code}`;
-                }, { enableHighAccuracy: true });
+                });
+
+                SensorBridge.start().then((result) => {
+                    if (result && result.status === 'fallback') {
+                        startWebGeoInterval();
+                    }
+                }).catch(() => {
+                    startWebGeoInterval();
+                });
+
+                setTimeout(() => {
+                    if (lastNativeLocationAt === 0) {
+                        startWebGeoInterval();
+                    }
+                }, 2000);
+            } else {
+                startWebGeoInterval();
             }
-        }, 3000);
+        })();
 
         document.getElementById('audio-mode-btn').addEventListener('click', () => {
             setEarphonesMode(!earphonesMode);
@@ -978,10 +1080,10 @@
             tapCount++;
             if (tapCount >= 3) {
                 // [40,60,120] = Material action-confirmed short-short-long cadence,
-                // distinguishable from the per-tap 60ms tick. typeof guard required
-                // because navigator.vibrate may be undefined on some WebView configs
-                // without VIBRATE permission. (ref: DL-006, R-004)
+                // distinguishable from the per-tap 60ms tick.
+                // typeof guard required: navigator.vibrate is absent on some Android WebView configs without the VIBRATE permission declared in AndroidManifest.
                 if (typeof navigator.vibrate === 'function') navigator.vibrate([40, 60, 120]);
+                _isTestMode = true;
                 startExperience(targetLat, targetLng, true);
             } else {
                 // 60ms matches Material Design short-tick (keyboard tap 50ms, button 70ms).
