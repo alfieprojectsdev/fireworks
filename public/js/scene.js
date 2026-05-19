@@ -113,11 +113,11 @@ function _createARGroup(userLat, userLng, isTestMode) {
     group.add(beaconMesh);
 
     // Time stats panels
-    const start  = new Date('2008-05-15T00:00:00');
+    const start  = new Date('2008-05-15T10:00:00');
     const now    = new Date();
     const diffMs = now - start;
     const days   = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const weeks  = Math.floor(days / 7);
+    const hours  = Math.floor(diffMs / (1000 * 60 * 60));
 
     // Years counts completed anniversaries — a partial year does not count as a full one.
     let years = now.getFullYear() - start.getFullYear();
@@ -133,7 +133,7 @@ function _createARGroup(userLat, userLng, isTestMode) {
     [
         { text: `${years} Years`,      rotY: 0 },
         { text: `${monthsRaw} Months`, rotY: Math.PI / 2 },
-        { text: `${weeks} Weeks`,      rotY: Math.PI },
+        { text: `${hours} Hours`,       rotY: Math.PI },
         { text: `${days} Days`,        rotY: -Math.PI / 2 },
     ].forEach(stat => {
         const sCanvas = document.createElement('canvas');
