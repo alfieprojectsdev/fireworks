@@ -195,6 +195,7 @@
         import { initScene, startExperience, TARGET_LAT, TARGET_LNG } from './js/scene.js';
         import { toggleEarphonesMode } from './js/audio.js';
         import { bootstrapSensors, setTestMode } from './js/sensors.js';
+        import { exportSession } from './js/session-recorder.js';
 
         if (window.BUILD_VERSION) {
             document.getElementById('build-version').textContent = window.BUILD_VERSION;
@@ -204,6 +205,10 @@
         bootstrapSensors();
 
         document.getElementById('audio-mode-btn').addEventListener('click', toggleEarphonesMode);
+
+        document.getElementById('debug-hud').addEventListener('click', e => {
+            if (e.target.dataset.action === 'export') exportSession();
+        });
 
         let hudTapCount = 0;
         let hudTapTimer = null;

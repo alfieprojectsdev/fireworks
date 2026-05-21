@@ -1,3 +1,8 @@
 node_modules/
 public/version.js
-.claude/
+# Ignore .claude tool state and local settings; track shared review infrastructure
+.claude/*
+!.claude/commands/
+!.claude/commands/**
+!.claude/pr-rules/
+!.claude/pr-rules/**
