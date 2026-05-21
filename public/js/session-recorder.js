@@ -83,7 +83,7 @@ function _summarize() {
         gpsCount: _gpsEvents.length,
         avgAccuracyM,
         maxAccuracyM,
-        actTriggers:         _actEvents,
+        actCount: _actEvents.length,
         maxAlignmentDeltaDeg,
     };
 }
