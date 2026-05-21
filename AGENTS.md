@@ -6,7 +6,7 @@ This project uses `CLAUDE.md` as its primary AI context file. If your tool reads
 
 Every PR should be reviewed with the project's review command before being marked ready:
 
-```
+```text
 /review
 ```
 

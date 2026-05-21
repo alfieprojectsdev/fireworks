@@ -6,7 +6,7 @@ Review the current branch against main. Be direct. Cite `file:line`. Surface rea
 
 Run in order:
 
-```
+```bash
 gh pr view --json number,title,body,headRefName 2>/dev/null || true
 git fetch origin main
 git log --no-merges origin/main..HEAD --oneline
@@ -32,7 +32,7 @@ Apply every entry under the "Lessons learned" section of `.claude/pr-rules/commo
 
 Use exactly this format:
 
-```
+```markdown
 ## Summary
 <one paragraph: what the PR does, whether it matches the stated intent>
 
