@@ -1,6 +1,7 @@
 import { getDistanceKm, getBearing } from './geo.js';
 import { ensureAudioContext, detectEarphones, setEarphonesMode, syncAudioListener } from './audio.js';
 import { Firework, getTextIllumination, tickIllumination } from './fireworks.js';
+import { recordActEvent } from './session-recorder.js';
 
 export const TARGET_LAT = 14.658888478751235;
 export const TARGET_LNG = 121.071173166497;
@@ -26,6 +27,9 @@ let userDistanceToChurch = Infinity;
 
 const fireworks = [];
 
+let _actBeaconFired = false, _actFwFired = false,
+    _actMqFired    = false,  _actStFired = false;
+
 // --- Public accessors used by sensors.js ---
 
 export function getCamera()                { return camera; }
@@ -34,6 +38,20 @@ export function setNativeOrientationActive() { _nativeOrientationActive = true; 
 
 export function setUserDistance(metres) {
     userDistanceToChurch = metres;
+}
+
+const _fwdScratch = new THREE.Vector3();
+
+export function getAlignmentData() {
+    if (!camera) return null;
+    const fwd = _fwdScratch.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    const camDeg = ((Math.atan2(fwd.x, -fwd.z) * 180 / Math.PI) + 360) % 360;
+    if (!arGroup) return { camDeg: camDeg.toFixed(1), arDeg: null, deltaDeg: null };
+    const arDeg = ((Math.atan2(arGroup.position.x, -arGroup.position.z) * 180 / Math.PI) + 360) % 360;
+    let delta = camDeg - arDeg;
+    if (delta >  180) delta -= 360;
+    if (delta < -180) delta += 360;
+    return { camDeg: camDeg.toFixed(1), arDeg: arDeg.toFixed(1), deltaDeg: delta.toFixed(1) };
 }
 
 export function clearWatchPosition() {
@@ -338,6 +356,27 @@ function _animate() {
         beaconBaseOpacity  += (beaconTarget  * 0.7 - beaconBaseOpacity)  * 0.02;
         marqueeBaseOpacity += (marqueeTarget * 0.8 - marqueeBaseOpacity) * 0.02;
         statsBaseOpacity   += (statsTarget   * 0.8 - statsBaseOpacity)   * 0.02;
+
+        if (!_actBeaconFired && beaconBaseOpacity > 0.01) {
+            _actBeaconFired = true;
+            recordActEvent('beacon_on', userDistanceToChurch);
+            console.log(`[FIELD:act] beacon_on dist=${Math.round(userDistanceToChurch)}m`);
+        }
+        if (!_actFwFired && showFireworks) {
+            _actFwFired = true;
+            recordActEvent('fireworks_on', userDistanceToChurch);
+            console.log(`[FIELD:act] fireworks_on dist=${Math.round(userDistanceToChurch)}m`);
+        }
+        if (!_actMqFired && marqueeBaseOpacity > 0.01) {
+            _actMqFired = true;
+            recordActEvent('marquee_on', userDistanceToChurch);
+            console.log(`[FIELD:act] marquee_on dist=${Math.round(userDistanceToChurch)}m`);
+        }
+        if (!_actStFired && statsBaseOpacity > 0.01) {
+            _actStFired = true;
+            recordActEvent('stats_on', userDistanceToChurch);
+            console.log(`[FIELD:act] stats_on dist=${Math.round(userDistanceToChurch)}m`);
+        }
 
         arGroup.children.forEach(child => {
             if      (child === marqueeCylinder)          child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);

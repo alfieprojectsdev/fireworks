@@ -1,3 +1,11 @@
 node_modules/
 public/version.js
-.claude/
+# Ignore .claude tool state and local settings; track shared review infrastructure.
+# The inner .claude/.gitignore (managed by oh-my-claudecode) re-includes agents/,
+# conventions/, skills/, and output-styles/ — the root intentionally overrides those
+# so tool-specific dirs remain private and only project-defined files are tracked.
+.claude/*
+!.claude/commands/
+!.claude/commands/**
+!.claude/pr-rules/
+!.claude/pr-rules/**
