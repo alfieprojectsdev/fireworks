@@ -88,7 +88,6 @@ export function startWebGeoInterval() {
                 const bearingDeg = ((getBearing(lat, lng, TARGET_LAT, TARGET_LNG) * 180 / Math.PI) + 360) % 360;
                 document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'web', metres, bearingDeg);
                 recordGPS(lat, lng, acc, 'web', metres, bearingDeg, getAlignmentData());
-                console.log(`[FIELD:gps] src=web dist=${Math.round(metres)}m acc=±${acc}m brg=${bearingDeg.toFixed(1)}°`);
                 if (metres <= 1800) {
                     clearInterval(_webGeoIntervalId);
                     _webGeoIntervalId = null;
@@ -145,7 +144,6 @@ export function bootstrapSensors() {
             const bearingDeg = ((getBearing(lat, lng, TARGET_LAT, TARGET_LNG) * 180 / Math.PI) + 360) % 360;
             document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', metres, bearingDeg);
             recordGPS(lat, lng, acc, 'native', metres, bearingDeg, getAlignmentData());
-            console.log(`[FIELD:gps] src=native dist=${Math.round(metres)}m acc=±${acc}m brg=${bearingDeg.toFixed(1)}°`);
 
             if (!isExperienceStarted() && metres <= 1800) {
                 if (_webGeoIntervalId !== null) { clearInterval(_webGeoIntervalId); _webGeoIntervalId = null; }

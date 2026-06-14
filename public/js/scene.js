@@ -85,12 +85,10 @@ function _createARGroup(userLat, userLng, isTestMode) {
 
     if (isTestMode) {
         group.position.set(0, 15, -40);
-        console.log('AR Spawning in TEST MODE (fixed offset)');
     } else {
         const dist    = getDistanceKm(userLat, userLng, TARGET_LAT, TARGET_LNG) * 1000;
         const bearing = getBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
         group.position.set(dist * Math.sin(bearing), 15, -dist * Math.cos(bearing));
-        console.log(`AR Spawning in PRODUCTION MODE (GPS: ${dist.toFixed(1)}m, bearing: ${bearing.toFixed(2)}rad)`);
     }
 
     // Cylindrical marquee — radius sized to clear the chapel dome (~55m wide)
@@ -360,22 +358,18 @@ function _animate() {
         if (!_actBeaconFired && beaconBaseOpacity > 0.01) {
             _actBeaconFired = true;
             recordActEvent('beacon_on', userDistanceToChurch);
-            console.log(`[FIELD:act] beacon_on dist=${Math.round(userDistanceToChurch)}m`);
         }
         if (!_actFwFired && showFireworks) {
             _actFwFired = true;
             recordActEvent('fireworks_on', userDistanceToChurch);
-            console.log(`[FIELD:act] fireworks_on dist=${Math.round(userDistanceToChurch)}m`);
         }
         if (!_actMqFired && marqueeBaseOpacity > 0.01) {
             _actMqFired = true;
             recordActEvent('marquee_on', userDistanceToChurch);
-            console.log(`[FIELD:act] marquee_on dist=${Math.round(userDistanceToChurch)}m`);
         }
         if (!_actStFired && statsBaseOpacity > 0.01) {
             _actStFired = true;
             recordActEvent('stats_on', userDistanceToChurch);
-            console.log(`[FIELD:act] stats_on dist=${Math.round(userDistanceToChurch)}m`);
         }
 
         arGroup.children.forEach(child => {
