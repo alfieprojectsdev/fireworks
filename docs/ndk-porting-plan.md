@@ -234,7 +234,9 @@ android {
         // ... existing ...
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++17 -O3 -ffast-math"
+                // No -ffast-math: preserve IEEE-754 semantics so the kernel
+                // tracks the JS reference for Phase 1c A/B parity.
+                cppFlags "-std=c++17 -O3"
                 abiFilters "arm64-v8a"   // A56 is arm64; skip x86 overhead
             }
         }
@@ -248,6 +250,11 @@ android {
     }
 }
 ```
+
+> **Testing caveat:** `abiFilters "arm64-v8a"` makes the APK refuse to install
+> on x86_64 emulators (`INSTALL_FAILED_NO_MATCHING_ABIS`). For Phase 1c A/B
+> testing use an **arm64 AVD** (API 34+) or the physical A56. Add `x86_64` to
+> `abiFilters` temporarily if an x86 emulator is unavoidable.
 
 Add to `local.properties` (or confirm already present via gearsync):
 ```

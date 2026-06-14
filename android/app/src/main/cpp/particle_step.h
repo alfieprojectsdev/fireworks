@@ -15,6 +15,10 @@
 //   fadeRate  firework.life / firework.maxLife (frame-advanced on the JS side)
 //   windX/Y/Z constant per-frame drift added after drag
 //
+// Trajectories track the JS reference within float rounding — not bit-exact:
+// JS arithmetic runs in f64 and rounds to f32 on store into the Float32Array,
+// whereas this kernel is f32 throughout, so intermediates can differ by ~1 ULP.
+//
 // Returns count of still-alive particles (0 => firework can be retired).
 int step_particles(float* pos, float* vel, const float* life,
                    int count, int type, float fadeRate,

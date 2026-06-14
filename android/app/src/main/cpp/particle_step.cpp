@@ -1,7 +1,8 @@
 #include "particle_step.h"
 
 // Mirrors Firework.update()'s explosion branch (fireworks.js:147-168)
-// operation-for-operation so native and JS produce bit-identical trajectories.
+// operation-for-operation. Results track the JS reference within float rounding
+// (JS uses f64 intermediates; this kernel is f32 throughout) — see header.
 int step_particles(float* pos, float* vel, const float* life,
                    int count, int type, float fadeRate,
                    float windX, float windY, float windZ) {

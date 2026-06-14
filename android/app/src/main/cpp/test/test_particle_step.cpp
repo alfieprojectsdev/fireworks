@@ -91,6 +91,41 @@ int main() {
         check("c4 alive count", (float)alive, 3.0f);
     }
 
+    // ---- Case 5: Chrysanthemum (type 2) — distinctive streak=3, gravity=0.03 --
+    // Most likely victim of a ternary transposition; the default-branch types
+    // (0/1) use streak 1.5 and shaped types (>=3) use 0.8, so 3.0 is unique.
+    {
+        float pos[6]  = {0,0,0, 0,0,0};
+        float vel[3]  = {2, 5, 0};
+        float life[1] = {1.0f};
+        step_particles(pos, vel, life, 1, /*type*/2, /*fadeRate*/0.0f, 0, 0, 0);
+        check("c5 chrys tail.x", pos[3], pos[0] - 2.0f * 3.0f);      // streak 3.0
+        check("c5 chrys tail.y", pos[4], pos[1] - 5.0f * 3.0f);
+        check("c5 chrys vel.y", vel[1], (5.0f - 0.03f) * 0.96f);     // default gravity/drag
+    }
+
+    // ---- Case 6: multi-particle, multi-step — exercises i>=1 stride + write-back
+    // Two steps so vel mutated in step 1 must be consumed in step 2; checks the
+    // SECOND particle (i==1), which a q=i*3 / p=i*6 stride bug would corrupt.
+    {
+        const int N = 2;
+        // Particle 0: vel (1,0,0); particle 1: vel (0,0,1). Distinct axes so a
+        // stride mix-up between particles shows up immediately.
+        float pos[12] = {0,0,0, 0,0,0,   0,0,0, 0,0,0};
+        float vel[6]  = {1,0,0,          0,0,1};
+        float life[2] = {1.0f, 1.0f};
+        // Peony (type 0): streak 1.5, gravity 0.03, drag 0.96, no wind.
+        step_particles(pos, vel, life, N, 0, /*fadeRate*/0.0f, 0, 0, 0);
+        // After step 1, particle 1 head.z = 1; vel.z = (1)*0.96 = 0.96, vel.y = -0.03*0.96.
+        step_particles(pos, vel, life, N, 0, /*fadeRate*/0.0f, 0, 0, 0);
+        // Step 2 head.z += 0.96 -> 1.96; head.y += (-0.0288) -> -0.0288.
+        check("c6 p1 head.z", pos[8],  1.96f);
+        check("c6 p1 head.y", pos[7],  -0.0288f);
+        // Particle 0 must be untouched on z/y axes (no cross-particle bleed).
+        check("c6 p0 head.x", pos[0],  1.0f + 0.96f);   // 1.96 along x only
+        check("c6 p0 head.z", pos[2],  0.0f);
+    }
+
     std::printf("\n%s (%d failures)\n", g_fail ? "TESTS FAILED" : "ALL PASS", g_fail);
     return g_fail ? 1 : 0;
 }

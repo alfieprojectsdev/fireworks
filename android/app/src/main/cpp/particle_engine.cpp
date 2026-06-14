@@ -18,8 +18,11 @@ Java_com_alfie_anniversary_ParticleEngine_nativeStep(
     jint count, jint type, jfloat fadeRate,
     jfloat windX, jfloat windY, jfloat windZ) {
 
-    // Pin without copy. Safe: no other JNI calls happen between pin and release,
-    // so the GC-disabled critical window stays minimal.
+    // Pin three distinct, non-aliasing arrays without copying. ART permits
+    // holding multiple primitive-critical pins simultaneously as long as the
+    // arrays don't overlap and no blocking/object-allocating JNI calls occur in
+    // the window — which holds here (only step_particles runs, no JNI calls).
+    // The window stays minimal; CheckJNI passes for non-aliasing multi-pins.
     auto* pPos  = static_cast<float*>(env->GetPrimitiveArrayCritical(pos,  nullptr));
     auto* pVel  = static_cast<float*>(env->GetPrimitiveArrayCritical(vel,  nullptr));
     auto* pLife = static_cast<float*>(env->GetPrimitiveArrayCritical(life, nullptr));

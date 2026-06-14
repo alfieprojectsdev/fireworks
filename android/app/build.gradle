@@ -19,7 +19,10 @@ android {
         // restricting ABIs avoids building/packaging unused .so variants.
         externalNativeBuild {
             cmake {
-                cppFlags "-std=c++17 -O3 -ffast-math"
+                // No -ffast-math: the step kernel is meant to track the JS
+                // reference closely for Phase 1c A/B parity, so IEEE-754
+                // float semantics must be preserved (no FP reordering).
+                cppFlags "-std=c++17 -O3"
             }
         }
         ndk {
