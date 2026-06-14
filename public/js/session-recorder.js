@@ -5,8 +5,7 @@ const _gpsEvents  = [];
 const _oriSamples = [];
 const _actEvents  = [];
 let   _lastOriAt  = 0;
-let   _targetLat  = null;
-let   _targetLng  = null;
+let   _sites      = null;      // [{ id, lat, lng, anchor, marquee }, ...]
 let   _perfProvider = null;   // optional () => perfStats, injected at init
 
 const _ACT_EXPECTED_M = {
@@ -16,18 +15,18 @@ const _ACT_EXPECTED_M = {
     stats_on:      100,
 };
 
-export function initRecorder(targetLat, targetLng, perfProvider = null) {
-    _targetLat = targetLat;
-    _targetLng = targetLng;
+export function initRecorder(sites, perfProvider = null) {
+    _sites = sites;
     _perfProvider = perfProvider;
 }
 
-export function recordGPS(lat, lng, acc, src, distM, bearingDeg, alignment = null) {
+export function recordGPS(lat, lng, acc, src, distM, bearingDeg, alignment = null, siteId = null) {
     if (_gpsEvents.length >= MAX_GPS) _gpsEvents.shift();
     const entry = {
         ts: Date.now(), lat, lng, acc, src,
         distM: Math.round(distM),
         bearingDeg: +bearingDeg.toFixed(1),
+        site: siteId,
     };
     if (alignment) {
         entry.align = {
@@ -98,8 +97,7 @@ export function exportSession() {
 
     const payload = JSON.stringify({
         exportedAt: new Date().toISOString(),
-        targetLat:  _targetLat,
-        targetLng:  _targetLng,
+        sites:      _sites,
         summary:    _summarize(),
         perf:       _perfProvider ? _perfProvider() : null,
         actEvents:  _actEvents,

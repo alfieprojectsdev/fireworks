@@ -192,7 +192,7 @@
     <div id="hud-toggle"></div>
 
     <script type="module">
-        import { initScene, startExperience, TARGET_LAT, TARGET_LNG } from './js/scene.js';
+        import { initScene, startExperience, SITES } from './js/scene.js';
         import { toggleEarphonesMode } from './js/audio.js';
         import { bootstrapSensors, setTestMode } from './js/sensors.js';
         import { exportSession } from './js/session-recorder.js';
@@ -233,7 +233,9 @@
                 // configs without the VIBRATE permission declared in AndroidManifest.
                 if (typeof navigator.vibrate === 'function') navigator.vibrate([40, 60, 120]);
                 setTestMode(true);
-                startExperience(TARGET_LAT, TARGET_LNG, true);
+                // Test mode previews the primary site (church/2008). Site 2 (2005)
+                // is verified on location or via a future test-site selector.
+                startExperience(SITES[0], SITES[0].lat, SITES[0].lng, true);
             } else {
                 // 60ms matches Material Design short-tick (keyboard tap 50ms, button 70ms).
                 if (typeof navigator.vibrate === 'function') navigator.vibrate(60);
