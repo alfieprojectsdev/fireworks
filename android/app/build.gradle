@@ -15,6 +15,23 @@ android {
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+        // Native particle engine (NDK). Target device (Galaxy A56) is arm64 only;
+        // restricting ABIs avoids building/packaging unused .so variants.
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -O3 -ffast-math"
+            }
+        }
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+    ndkVersion "27.1.12297006"
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
     }
     buildTypes {
         release {
