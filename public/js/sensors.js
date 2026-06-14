@@ -4,7 +4,7 @@ import {
     getCamera, startExperience,
     setNativeOrientationActive, setUserDistance,
     isExperienceStarted, clearWatchPosition,
-    getAlignmentData,
+    getAlignmentData, getPerfStats,
 } from './scene.js';
 import { initRecorder, recordGPS, recordOrientation } from './session-recorder.js';
 
@@ -58,6 +58,10 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg) {
     const camStr = ali                 ? `${ali.camDeg}&deg;`   : '&mdash;';
     const arStr  = ali && ali.arDeg    ? `${ali.arDeg}&deg;`    : '&mdash;';
     const dStr   = ali && ali.deltaDeg ? `${ali.deltaDeg}&deg;` : '&mdash;';
+    const p = getPerfStats();
+    const perfStr = p.busyFrames
+        ? `frame ${p.frameMsAvg}/${p.frameMsMax} &middot; part ${p.partMsAvg}/${p.partMsMax} &middot; rend ${p.renderMsAvg}/${p.renderMsMax}ms &middot; n${p.partCountMax}`
+        : 'no fireworks yet';
     return [
         `[${src}] &plusmn;${acc}m`,
         `${lat.toFixed(4)} / ${lng.toFixed(4)}`,
@@ -65,6 +69,7 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg) {
         `&asymp; ${cp.name} &nbsp; &Delta;${sign}${diff}m &nbsp; exp:${cp.expectedM}m`,
         `stage: ${_stageLabel(distM)}`,
         `cam: ${camStr} &nbsp; AR: ${arStr} &nbsp; &Delta;: ${dStr}`,
+        `perf(avg/max): ${perfStr}`,
         `<span data-action="export" style="pointer-events:auto;cursor:pointer;text-decoration:underline;opacity:0.8">&#x2B07; Export Session</span>`,
     ].join('<br>');
 }
@@ -122,7 +127,7 @@ export function startWebGeoInterval() {
  * 4. If SensorBridge is absent (non-Capacitor env), startWebGeoInterval() runs immediately.
  */
 export function bootstrapSensors() {
-    initRecorder(TARGET_LAT, TARGET_LNG);
+    initRecorder(TARGET_LAT, TARGET_LNG, getPerfStats);
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SensorBridge) {
         const SensorBridge = window.Capacitor.Plugins.SensorBridge;
 

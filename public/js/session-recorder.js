@@ -7,6 +7,7 @@ const _actEvents  = [];
 let   _lastOriAt  = 0;
 let   _targetLat  = null;
 let   _targetLng  = null;
+let   _perfProvider = null;   // optional () => perfStats, injected at init
 
 const _ACT_EXPECTED_M = {
     beacon_on:    1800,
@@ -15,9 +16,10 @@ const _ACT_EXPECTED_M = {
     stats_on:      100,
 };
 
-export function initRecorder(targetLat, targetLng) {
+export function initRecorder(targetLat, targetLng, perfProvider = null) {
     _targetLat = targetLat;
     _targetLng = targetLng;
+    _perfProvider = perfProvider;
 }
 
 export function recordGPS(lat, lng, acc, src, distM, bearingDeg, alignment = null) {
@@ -99,6 +101,7 @@ export function exportSession() {
         targetLat:  _targetLat,
         targetLng:  _targetLng,
         summary:    _summarize(),
+        perf:       _perfProvider ? _perfProvider() : null,
         actEvents:  _actEvents,
         gpsEvents:  _gpsEvents,
         oriSamples: _oriSamples,
