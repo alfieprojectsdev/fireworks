@@ -33,6 +33,20 @@
             transition: opacity 2s ease-in-out;
         }
 
+        /* Suppress the WebView's built-in play-button overlay. Chromium renders a
+           centered "start playback" glyph in the <video> shadow DOM before/while
+           a MediaStream plays — there is no image asset; it's a native control.
+           These shadow pseudo-elements remove it so the camera feed is clean. */
+        #camera-bg::-webkit-media-controls,
+        #camera-bg::-webkit-media-controls-overlay-play-button,
+        #camera-bg::-webkit-media-controls-start-playback-button,
+        #camera-bg::-webkit-media-controls-play-button,
+        #camera-bg::-webkit-media-controls-panel {
+            display: none !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
         #ar-canvas {
             z-index: 2;
             position: absolute;
