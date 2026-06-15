@@ -94,17 +94,30 @@ function _createARGroup(userLat, userLng, isTestMode) {
     }
 
     // Cylindrical marquee — radius sized to clear the chapel dome (~55m wide)
+    const _mFont   = '72px sans-serif';
+    const _mText   = 'Happy Anniversary, Bhaze!';
+    const _mCopies = 3;
+    // Measure actual rendered text width before committing to canvas dimensions,
+    // so the gap between copies is guaranteed to be non-negative at any DPI/font.
+    const _mProbe  = document.createElement('canvas').getContext('2d');
+    _mProbe.font   = _mFont;
+    const _mTextW  = Math.ceil(_mProbe.measureText(_mText).width);
+    const _mGap    = 200; // minimum blank pixels between copy edges
+    // Round canvas width up to the next power-of-two so RepeatWrapping works
+    // correctly in WebGL 1 contexts (NPOT textures cannot use repeat there).
+    const _mCW = Math.pow(2, Math.ceil(Math.log2(_mCopies * (_mTextW + _mGap))));
+
     const mCanvas = document.createElement('canvas');
     const mCtx    = mCanvas.getContext('2d');
-    mCanvas.width = 4096; mCanvas.height = 256;
-    mCtx.font          = '72px sans-serif';
+    mCanvas.width = _mCW; mCanvas.height = 256;
+    mCtx.font          = _mFont;
     mCtx.textAlign     = 'center';
     mCtx.textBaseline  = 'middle';
     mCtx.shadowColor   = 'rgba(255, 220, 160, 0.4)';
     mCtx.shadowBlur    = 8;
     mCtx.fillStyle     = 'white';
-    for (let i = 0; i < 3; i++)
-        mCtx.fillText('Happy Anniversary, Bhaze!', Math.round((i + 0.5) * 4096 / 3), 128);
+    for (let i = 0; i < _mCopies; i++)
+        mCtx.fillText(_mText, Math.round((i + 0.5) * _mCW / _mCopies), 128);
 
     const mTex = new THREE.CanvasTexture(mCanvas);
     mTex.wrapS = THREE.RepeatWrapping;
