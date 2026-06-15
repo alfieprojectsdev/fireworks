@@ -115,21 +115,33 @@ export function initScene() {
     _animate();
 }
 
-// Builds the wrapping marquee texture for a given line of text. 4096x512 so the
-// 12 m-tall crown cylinder reads crisply at distance; text is drawn three times
-// across the strip so it repeats evenly around the cylinder.
+// Builds the wrapping marquee texture for a given line of text. The canvas width
+// is derived from the *measured* text width (not hardcoded) so every copy — and
+// the wrap seam itself — keeps a guaranteed blank gap, regardless of how long the
+// active site's line is. Fixes the seam bleed where "...Bhaze!" overlapped
+// "Happy..." (GH #6); 512 px tall so the 12 m crown reads crisply at distance.
 function _createMarqueeTexture(text) {
+    const FONT   = '144px sans-serif';
+    const COPIES = 3;
+    const GAP    = 300; // minimum blank px between adjacent copy edges (incl. seam)
+
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font  = FONT;
+    const textW = Math.ceil(probe.measureText(text).width);
+    // Power-of-two width keeps RepeatWrapping valid on WebGL 1 (NPOT can't repeat).
+    const width = Math.pow(2, Math.ceil(Math.log2(COPIES * (textW + GAP))));
+
     const canvas = document.createElement('canvas');
-    canvas.width = 4096; canvas.height = 512;
+    canvas.width = width; canvas.height = 512;
     const ctx = canvas.getContext('2d');
-    ctx.font         = '144px sans-serif';
+    ctx.font         = FONT;
     ctx.textAlign    = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowColor  = 'rgba(255, 220, 160, 0.4)';
     ctx.shadowBlur   = 16;
     ctx.fillStyle    = 'white';
-    for (let i = 0; i < 3; i++)
-        ctx.fillText(text, Math.round((i + 0.5) * 4096 / 3), 256);
+    for (let i = 0; i < COPIES; i++)
+        ctx.fillText(text, Math.round((i + 0.5) * width / COPIES), 256);
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     return tex;
