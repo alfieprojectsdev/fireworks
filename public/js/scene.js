@@ -4,8 +4,10 @@ import { Firework, getTextIllumination, tickIllumination } from './fireworks.js'
 import { recordActEvent } from './session-recorder.js';
 
 // Each site triggers the experience independently; the nearest in-range site
-// wins (sites are ~2 km apart so trigger ranges don't overlap). `anchor` is the
-// ISO datetime the stat panels + message count from; `marquee` is the cylinder text.
+// wins. The two sites are ~1.94 km apart and the 1800 m trigger radius overlaps
+// by ~140 m on each side, but nearestSite() + the active-site lock guarantee
+// exactly one site triggers per session. `anchor` is the ISO datetime the stat
+// panels + message count from; `marquee` is the cylinder text.
 export const SITES = [
     {
         id:      'church',
@@ -22,10 +24,6 @@ export const SITES = [
         marquee: 'Happy Monthsary, Bhaze!',
     },
 ];
-
-// Backward-compatible aliases for the primary site (test-mode default, etc.).
-export const TARGET_LAT = SITES[0].lat;
-export const TARGET_LNG = SITES[0].lng;
 
 // Returns the nearest site to a position plus its distance (m) and bearing (deg).
 export function nearestSite(lat, lng) {
@@ -367,6 +365,7 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
 // or is the cost in renderer.render() (GPU) where an NDK/WASM port wouldn't help?
 const _perf = {
     busyFrames: 0,
+    preSum:  0,  preMax:  0,   // work before _tA: controls.update, syncAudio, illumination, opacity traversal
     partSum: 0,  partMax: 0,   // particle spawn + update, ms
     rendSum: 0,  rendMax: 0,   // renderer.render(), ms
     frameSum: 0, frameMax: 0,  // whole _animate body, ms
@@ -377,6 +376,8 @@ export function getPerfStats() {
     const n = _perf.busyFrames || 1;
     return {
         busyFrames:   _perf.busyFrames,
+        preMsAvg:     +(_perf.preSum   / n).toFixed(3),
+        preMsMax:     +_perf.preMax.toFixed(3),
         partMsAvg:    +(_perf.partSum  / n).toFixed(3),
         partMsMax:    +_perf.partMax.toFixed(3),
         renderMsAvg:  +(_perf.rendSum  / n).toFixed(3),
@@ -472,7 +473,8 @@ function _animate() {
 
     if (_partCount > 0) {
         _perf.busyFrames++;
-        const partMs = _tB - _tA, rendMs = _tC - _tB, frameMs = _tC - _t0;
+        const preMs = _tA - _t0, partMs = _tB - _tA, rendMs = _tC - _tB, frameMs = _tC - _t0;
+        _perf.preSum   += preMs;   if (preMs   > _perf.preMax)   _perf.preMax   = preMs;
         _perf.partSum  += partMs;  if (partMs  > _perf.partMax)  _perf.partMax  = partMs;
         _perf.rendSum  += rendMs;  if (rendMs  > _perf.rendMax)  _perf.rendMax  = rendMs;
         _perf.frameSum += frameMs; if (frameMs > _perf.frameMax) _perf.frameMax = frameMs;

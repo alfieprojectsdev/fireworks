@@ -58,22 +58,28 @@ function _geoTo(lat, lng, site) {
 }
 
 function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
-    const cp   = _nearestCheckpoint(lat, lng);
-    const diff = Math.round(distM - cp.expectedM);
-    const sign = diff >= 0 ? '+' : '';
     const ali  = getAlignmentData();
     const camStr = ali                 ? `${ali.camDeg}&deg;`   : '&mdash;';
     const arStr  = ali && ali.arDeg    ? `${ali.arDeg}&deg;`    : '&mdash;';
     const dStr   = ali && ali.deltaDeg ? `${ali.deltaDeg}&deg;` : '&mdash;';
     const p = getPerfStats();
     const perfStr = p.busyFrames
-        ? `frame ${p.frameMsAvg}/${p.frameMsMax} &middot; part ${p.partMsAvg}/${p.partMsMax} &middot; rend ${p.renderMsAvg}/${p.renderMsMax}ms &middot; n${p.partCountMax}`
+        ? `pre ${p.preMsAvg}/${p.preMsMax} &middot; part ${p.partMsAvg}/${p.partMsMax} &middot; rend ${p.renderMsAvg}/${p.renderMsMax}ms &middot; n${p.partCountMax}`
         : 'no fireworks yet';
+    let siteRefStr;
+    if (site && site.id === 'church') {
+        const cp   = _nearestCheckpoint(lat, lng);
+        const diff = Math.round(distM - cp.expectedM);
+        const sign = diff >= 0 ? '+' : '';
+        siteRefStr = `&asymp; ${cp.name} &nbsp; &Delta;${sign}${diff}m`;
+    } else {
+        siteRefStr = `&asymp; &mdash;`;
+    }
     return [
         `[${src}] &plusmn;${acc}m`,
         `${lat.toFixed(4)} / ${lng.toFixed(4)}`,
         `dist: ${Math.round(distM)}m &nbsp; brg: ${bearingDeg.toFixed(1)}&deg;`,
-        `site: ${site ? site.id : '&mdash;'} &nbsp; &asymp; ${cp.name} &nbsp; &Delta;${sign}${diff}m`,
+        `site: ${site ? site.id : '&mdash;'} &nbsp; ${siteRefStr}`,
         `stage: ${_stageLabel(distM)}`,
         `cam: ${camStr} &nbsp; AR: ${arStr} &nbsp; &Delta;: ${dStr}`,
         `perf(avg/max): ${perfStr}`,

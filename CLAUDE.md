@@ -55,11 +55,14 @@ Primary logic is split across two files: **`public/index.html`** (all JS, Three.
 
 ## Key Constants
 
-- `targetLat = 14.658888478751235`, `targetLng = 121.071173166497` — the church location
-- Trigger radius: 0.1 km (100 meters)
+- `targetLat = 14.658888478751235`, `targetLng = 121.071173166497` — the church location (site id: `church`)
+- `originLat = 14.651726103123695`, `originLng = 121.05472805488795` — the origin location (site id: `origin`); anchor date `2005-10-15`, marks when Alfie and Bhazel became a couple — the "monthsary" site, distinct from the 2008-05-15 wedding
+- Trigger radius: 1800 m per site; the two sites are ~1.94 km apart so ranges overlap slightly — `nearestSite()` + the active-site lock guarantee exactly one site triggers
+- The app is now multi-site: `SITES` array in `public/js/scene.js`, nearest in-range site (≤1800 m) triggers and locks for the session via `getActiveSite()`
 - AR group spawn height: 15 meters (Y-axis)
 - Marquee cylinder radius: 20 meters, height: 4 meters
-- Wedding date: `new Date('2008-05-15T00:00:00')`
+- Wedding date: `new Date('2008-05-15T00:00:00')` (church site anchor)
+- Monthsary date: `new Date('2005-10-15T00:00:00')` (origin site anchor)
 
 ## Capacitor Notes
 
