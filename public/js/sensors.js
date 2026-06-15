@@ -4,7 +4,7 @@ import {
     getCamera, startExperience,
     setNativeOrientationActive, setUserDistance,
     isExperienceStarted, clearWatchPosition,
-    getAlignmentData, getPerfStats,
+    getAlignmentData,
 } from './scene.js';
 import { initRecorder, recordGPS, recordOrientation } from './session-recorder.js';
 
@@ -62,10 +62,6 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
     const camStr = ali                 ? `${ali.camDeg}&deg;`   : '&mdash;';
     const arStr  = ali && ali.arDeg    ? `${ali.arDeg}&deg;`    : '&mdash;';
     const dStr   = ali && ali.deltaDeg ? `${ali.deltaDeg}&deg;` : '&mdash;';
-    const p = getPerfStats();
-    const perfStr = p.busyFrames
-        ? `pre ${p.preMsAvg}/${p.preMsMax} &middot; part ${p.partMsAvg}/${p.partMsMax} &middot; rend ${p.renderMsAvg}/${p.renderMsMax}ms &middot; n${p.partCountMax}`
-        : 'no fireworks yet';
     let siteRefStr;
     if (site && site.id === 'church') {
         const cp   = _nearestCheckpoint(lat, lng);
@@ -82,7 +78,6 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
         `site: ${site ? site.id : '&mdash;'} &nbsp; ${siteRefStr}`,
         `stage: ${_stageLabel(distM)}`,
         `cam: ${camStr} &nbsp; AR: ${arStr} &nbsp; &Delta;: ${dStr}`,
-        `perf(avg/max): ${perfStr}`,
         `<span data-action="export" style="pointer-events:auto;cursor:pointer;text-decoration:underline;opacity:0.8">&#x2B07; Export Session</span>`,
     ].join('<br>');
 }
@@ -139,7 +134,7 @@ export function startWebGeoInterval() {
  * 4. If SensorBridge is absent (non-Capacitor env), startWebGeoInterval() runs immediately.
  */
 export function bootstrapSensors() {
-    initRecorder(SITES, getPerfStats);
+    initRecorder(SITES);
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SensorBridge) {
         const SensorBridge = window.Capacitor.Plugins.SensorBridge;
 

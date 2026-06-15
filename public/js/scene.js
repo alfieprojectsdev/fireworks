@@ -390,39 +390,8 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     }, 1000);
 }
 
-// Profiling probe (Phase 1c decision gate). Accumulates only on frames where
-// fireworks particles are live, so idle approach frames don't dilute the
-// fireworks-active cost. getPerfStats() reports averages + peaks; the question
-// it answers: is the JS particle update a meaningful slice of the frame budget,
-// or is the cost in renderer.render() (GPU) where an NDK/WASM port wouldn't help?
-const _perf = {
-    busyFrames: 0,
-    preSum:  0,  preMax:  0,   // work before _tA: controls.update, syncAudio, illumination, opacity traversal
-    partSum: 0,  partMax: 0,   // particle spawn + update, ms
-    rendSum: 0,  rendMax: 0,   // renderer.render(), ms
-    frameSum: 0, frameMax: 0,  // whole _animate body, ms
-    partCountMax: 0,           // peak live line-segment vertices being updated
-};
-
-export function getPerfStats() {
-    const n = _perf.busyFrames || 1;
-    return {
-        busyFrames:   _perf.busyFrames,
-        preMsAvg:     +(_perf.preSum   / n).toFixed(3),
-        preMsMax:     +_perf.preMax.toFixed(3),
-        partMsAvg:    +(_perf.partSum  / n).toFixed(3),
-        partMsMax:    +_perf.partMax.toFixed(3),
-        renderMsAvg:  +(_perf.rendSum  / n).toFixed(3),
-        renderMsMax:  +_perf.rendMax.toFixed(3),
-        frameMsAvg:   +(_perf.frameSum / n).toFixed(3),
-        frameMsMax:   +_perf.frameMax.toFixed(3),
-        partCountMax: _perf.partCountMax,
-    };
-}
-
 function _animate() {
     requestAnimationFrame(_animate);
-    const _t0 = performance.now();
 
     // Skip controls.update() when native path is active to avoid overwriting
     // camera.quaternion set by the onNativeOrientationUpdate handler.
@@ -481,8 +450,6 @@ function _animate() {
         marqueeCylinder.rotation.y -= 0.002;
     }
 
-    const _tA = performance.now();
-
     if (showFireworks && fireworks.length < 15) {
         if (Math.random() < 0.1)  fireworks.push(new Firework(scene, arGroup));
         if (Math.random() < 0.02 && fireworks.length < 13) {
@@ -491,25 +458,10 @@ function _animate() {
         }
     }
 
-    let _partCount = 0;
     for (let i = fireworks.length - 1; i >= 0; i--) {
-        const fw = fireworks[i];
-        _partCount += fw.isRocket ? 2 : (fw.particleCount || 0);
-        fw.update();
-        if (fw.isDead) { fw.destroy(); fireworks.splice(i, 1); }
+        fireworks[i].update();
+        if (fireworks[i].isDead) { fireworks[i].destroy(); fireworks.splice(i, 1); }
     }
 
-    const _tB = performance.now();
     renderer.render(scene, camera);
-    const _tC = performance.now();
-
-    if (_partCount > 0) {
-        _perf.busyFrames++;
-        const preMs = _tA - _t0, partMs = _tB - _tA, rendMs = _tC - _tB, frameMs = _tC - _t0;
-        _perf.preSum   += preMs;   if (preMs   > _perf.preMax)   _perf.preMax   = preMs;
-        _perf.partSum  += partMs;  if (partMs  > _perf.partMax)  _perf.partMax  = partMs;
-        _perf.rendSum  += rendMs;  if (rendMs  > _perf.rendMax)  _perf.rendMax  = rendMs;
-        _perf.frameSum += frameMs; if (frameMs > _perf.frameMax) _perf.frameMax = frameMs;
-        if (_partCount > _perf.partCountMax) _perf.partCountMax = _partCount;
-    }
 }
