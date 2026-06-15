@@ -3,8 +3,43 @@ import { ensureAudioContext, detectEarphones, setEarphonesMode, syncAudioListene
 import { Firework, getTextIllumination, tickIllumination } from './fireworks.js';
 import { recordActEvent } from './session-recorder.js';
 
-export const TARGET_LAT = 14.658888478751235;
-export const TARGET_LNG = 121.071173166497;
+// Each site triggers the experience independently; the nearest in-range site
+// wins. The two sites are ~1.94 km apart and the 1800 m trigger radius overlaps
+// by ~140 m on each side, but nearestSite() + the active-site lock guarantee
+// exactly one site triggers per session. `anchor` is the ISO datetime the stat
+// panels + message count from; `marquee` is the cylinder text.
+export const SITES = [
+    {
+        id:      'church',
+        lat:     14.658888478751235,
+        lng:     121.071173166497,
+        anchor:  '2008-05-15T10:00:00',   // wedding, 10am ceremony (Hours stat anchors here)
+        marquee: 'Happy Anniversary, Bhaze!',
+    },
+    {
+        id:      'origin',
+        lat:     14.651726103123695,
+        lng:     121.05472805488795,
+        anchor:  '2005-10-15T00:00:00',
+        marquee: 'Happy Monthsary, Bhaze!',
+    },
+];
+
+// Returns the nearest site to a position plus its distance (m) and bearing (deg).
+export function nearestSite(lat, lng) {
+    let best = SITES[0], bestD = Infinity;
+    for (const s of SITES) {
+        const d = getDistanceKm(lat, lng, s.lat, s.lng) * 1000;
+        if (d < bestD) { bestD = d; best = s; }
+    }
+    const bearingDeg = ((getBearing(lat, lng, best.lat, best.lng) * 180 / Math.PI) + 360) % 360;
+    return { site: best, distM: bestD, bearingDeg };
+}
+
+// The site the experience locked onto at trigger time. Defaults to the primary
+// site so accessors are safe before startExperience() runs.
+let _activeSite = SITES[0];
+export function getActiveSite() { return _activeSite; }
 
 let scene, camera, renderer, controls;
 
@@ -23,7 +58,7 @@ let showFireworks = false;
 let beaconBaseOpacity  = 0;
 let marqueeBaseOpacity = 0;
 let statsBaseOpacity   = 0;
-let userDistanceToChurch = Infinity;
+let userDistanceToSite = Infinity;
 
 const fireworks = [];
 
@@ -37,7 +72,7 @@ export function isExperienceStarted()      { return _experienceStarted; }
 export function setNativeOrientationActive() { _nativeOrientationActive = true; }
 
 export function setUserDistance(metres) {
-    userDistanceToChurch = metres;
+    userDistanceToSite = metres;
 }
 
 const _fwdScratch = new THREE.Vector3();
@@ -80,41 +115,86 @@ export function initScene() {
     _animate();
 }
 
+// Builds the wrapping marquee texture for a given line of text. The canvas width
+// is derived from the *measured* text width (not hardcoded) so every copy — and
+// the wrap seam itself — keeps a guaranteed blank gap, regardless of how long the
+// active site's line is. Fixes the seam bleed where "...Bhaze!" overlapped
+// "Happy..." (GH #6); 512 px tall so the 12 m crown reads crisply at distance.
+function _createMarqueeTexture(text) {
+    const FONT   = '144px sans-serif';
+    const COPIES = 3;
+    const GAP    = 300; // minimum blank px between adjacent copy edges (incl. seam)
+
+    const probe = document.createElement('canvas').getContext('2d');
+    probe.font  = FONT;
+    const textW = Math.ceil(probe.measureText(text).width);
+    // Power-of-two width keeps RepeatWrapping valid on WebGL 1 (NPOT can't repeat).
+    const width = Math.pow(2, Math.ceil(Math.log2(COPIES * (textW + GAP))));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.font         = FONT;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(255, 220, 160, 0.4)';
+    ctx.shadowBlur   = 16;
+    ctx.fillStyle    = 'white';
+    for (let i = 0; i < COPIES; i++)
+        ctx.fillText(text, Math.round((i + 0.5) * width / COPIES), 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
+}
+
+// Renders a stat as a vertical-pylon texture: characters stacked top-to-bottom,
+// upright. Each glyph gets a square cell so the caller can size the plane (width =
+// height / nChars) and keep glyphs undistorted. Returns the texture + glyph count.
+function _createPylonTexture(text) {
+    const chars = [...text];
+    const cell = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width  = cell;
+    canvas.height = cell * chars.length;
+    const ctx = canvas.getContext('2d');
+    ctx.font         = '180px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(255, 220, 160, 0.4)';
+    ctx.shadowBlur   = 12;
+    ctx.fillStyle    = 'rgba(255, 255, 255, 0.6)';
+    chars.forEach((ch, i) => ctx.fillText(ch, cell / 2, cell * (i + 0.5)));
+    return { texture: new THREE.CanvasTexture(canvas), nChars: chars.length };
+}
+
 function _createARGroup(userLat, userLng, isTestMode) {
     const group = new THREE.Group();
 
     if (isTestMode) {
         group.position.set(0, 15, -40);
-        console.log('AR Spawning in TEST MODE (fixed offset)');
     } else {
-        const dist    = getDistanceKm(userLat, userLng, TARGET_LAT, TARGET_LNG) * 1000;
-        const bearing = getBearing(userLat, userLng, TARGET_LAT, TARGET_LNG);
+        const dist    = getDistanceKm(userLat, userLng, _activeSite.lat, _activeSite.lng) * 1000;
+        const bearing = getBearing(userLat, userLng, _activeSite.lat, _activeSite.lng);
         group.position.set(dist * Math.sin(bearing), 15, -dist * Math.cos(bearing));
-        console.log(`AR Spawning in PRODUCTION MODE (GPS: ${dist.toFixed(1)}m, bearing: ${bearing.toFixed(2)}rad)`);
     }
 
-    // Cylindrical marquee — radius sized to clear the chapel dome (~55m wide)
-    const mCanvas = document.createElement('canvas');
-    const mCtx    = mCanvas.getContext('2d');
-    mCanvas.width = 4096; mCanvas.height = 256;
-    mCtx.font          = '72px sans-serif';
-    mCtx.textAlign     = 'center';
-    mCtx.textBaseline  = 'middle';
-    mCtx.shadowColor   = 'rgba(255, 220, 160, 0.4)';
-    mCtx.shadowBlur    = 8;
-    mCtx.fillStyle     = 'white';
-    for (let i = 0; i < 3; i++)
-        mCtx.fillText('Happy Anniversary, Bhaze!', Math.round((i + 0.5) * 4096 / 3), 128);
+    // ── Monument (Quezon-shrine scale) ───────────────────────────────────────
+    // Ground is at local y = -15 (the group origin sits 15 m up). The monument is
+    // four vertical stat pylons (built below) ringed at the compass points, capped
+    // by a message crown band. Pylons rise from the ground to world y≈50; the crown
+    // wraps just above them at world y≈50–62 (~Quezon Memorial Shrine's ~66 m).
 
-    const mTex = new THREE.CanvasTexture(mCanvas);
-    mTex.wrapS = THREE.RepeatWrapping;
+    // The Crown: message text cylinder capping the pylon ring. Assigned to
+    // marqueeCylinder so the existing spin + fade envelope in _animate apply.
     marqueeCylinder = new THREE.Mesh(
-        new THREE.CylinderGeometry(30, 30, 4, 64, 1, true),
+        new THREE.CylinderGeometry(35, 35, 12, 64, 1, true),
         new THREE.MeshBasicMaterial({
-            map: mTex, transparent: true, opacity: 0,
+            map: _createMarqueeTexture(_activeSite.marquee),
+            transparent: true, opacity: 0,
             blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
         })
     );
+    marqueeCylinder.position.y = 41; // height 12 centered here -> spans local 35–47 (world 50–62)
     group.add(marqueeCylinder);
 
     // ACT 0: Orbital Beacon — 2 km pillar visible from PHIVOLCS rooftop (~1.5 km away)
@@ -130,8 +210,8 @@ function _createARGroup(userLat, userLng, isTestMode) {
     beaconMesh.userData.isBeacon = true;
     group.add(beaconMesh);
 
-    // Time stats panels
-    const start  = new Date('2008-05-15T10:00:00');
+    // Time stats panels — anchored to the active site's date
+    const start  = new Date(_activeSite.anchor);
     const now    = new Date();
     const diffMs = now - start;
     const days   = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -148,33 +228,30 @@ function _createARGroup(userLat, userLng, isTestMode) {
     let monthsRaw = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
     if (now.getDate() < start.getDate()) monthsRaw--;
 
+    // Four stat pylons — tall vertical columns of stacked glyphs, ringed at the
+    // compass points and rising from the ground to just under the crown band.
+    const PYLON_H = 50; // metres: bottom at local -15 (ground), top at local +35 (world 50)
     [
         { text: `${years} Years`,      rotY: 0 },
         { text: `${monthsRaw} Months`, rotY: Math.PI / 2 },
         { text: `${hours} Hours`,       rotY: Math.PI },
         { text: `${days} Days`,        rotY: -Math.PI / 2 },
     ].forEach(stat => {
-        const sCanvas = document.createElement('canvas');
-        sCanvas.width = 512; sCanvas.height = 256;
-        const sCtx = sCanvas.getContext('2d');
-        sCtx.font = '56px sans-serif';
-        sCtx.textAlign = 'center';
-        sCtx.textBaseline = 'middle';
-        sCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        sCtx.fillText(stat.text, 256, 128);
-        const sMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(20, 10),
+        const { texture, nChars } = _createPylonTexture(stat.text);
+        const w = PYLON_H / nChars; // square glyph cells
+        const pMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(w, PYLON_H),
             new THREE.MeshBasicMaterial({
-                map: new THREE.CanvasTexture(sCanvas),
+                map: texture,
                 transparent: true, opacity: 0,
                 blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
             })
         );
-        sMesh.position.set(0, -10, 0);
-        sMesh.rotation.y = stat.rotY;
-        sMesh.translateZ(30); // push outward to match the 30m cylinder radius
-        sMesh.userData.isStat = true;
-        group.add(sMesh);
+        pMesh.position.set(0, 10, 0);   // center: bottom at local -15 (ground), top at +35 (world 50)
+        pMesh.rotation.y = stat.rotY;
+        pMesh.translateZ(35);           // ring flush with the 35 m crown radius
+        pMesh.userData.isStat = true;
+        group.add(pMesh);
     });
 
     // Ground glow: faint additive ring at Y=0 under the church
@@ -194,9 +271,10 @@ function _createARGroup(userLat, userLng, isTestMode) {
     return group;
 }
 
-export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode = false) {
+export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.lng, isTestMode = false) {
     if (_experienceStarted) return;
     _experienceStarted = true;
+    _activeSite = site;   // lock the experience to this site for its lifetime
 
     // _webGeoIntervalId is owned by sensors.js; both trigger paths (web-geo success callback
     // and onNativeLocationUpdate) clear it via inline clearInterval() before calling here.
@@ -272,7 +350,7 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
     // 60s after trigger: fade in a personal inner cylinder
     setTimeout(() => {
         if (!arGroup) return;
-        const msgStart = new Date('2008-05-15T00:00:00');
+        const msgStart = new Date(_activeSite.anchor);
         const msgNow   = new Date();
         let yr = msgNow.getFullYear() - msgStart.getFullYear();
         if (msgNow.getMonth() < msgStart.getMonth() ||
@@ -305,14 +383,14 @@ export function startExperience(uLat = TARGET_LAT, uLng = TARGET_LNG, isTestMode
 
     if (isTestMode) {
         // Test mode: simulate standing at the church — reveal everything immediately
-        userDistanceToChurch = 0;
+        userDistanceToSite = 0;
     } else if (!window.__nativeLocationActive) {
         // Seed from the triggering fix so the opacity lerp starts with a real distance
         // before the first watchPosition callback arrives.
-        userDistanceToChurch = getDistanceKm(uLat, uLng, TARGET_LAT, TARGET_LNG) * 1000;
+        userDistanceToSite = getDistanceKm(uLat, uLng, _activeSite.lat, _activeSite.lng) * 1000;
         _watchId = navigator.geolocation.watchPosition(pos => {
-            userDistanceToChurch = getDistanceKm(
-                pos.coords.latitude, pos.coords.longitude, TARGET_LAT, TARGET_LNG
+            userDistanceToSite = getDistanceKm(
+                pos.coords.latitude, pos.coords.longitude, _activeSite.lat, _activeSite.lng
             ) * 1000;
         }, null, { enableHighAccuracy: true });
     }
@@ -339,19 +417,19 @@ function _animate() {
     if (arGroup) {
         // ACT 0: Beacon fades in 1800→1500m, holds solid 1500→800m, fades out 800→650m
         let beaconTarget = 0;
-        if (userDistanceToChurch <= 1800 && userDistanceToChurch > 650) {
-            if      (userDistanceToChurch > 1500) beaconTarget = Math.max(0, 1 - ((userDistanceToChurch - 1500) / 300));
-            else if (userDistanceToChurch < 800)  beaconTarget = Math.max(0, (userDistanceToChurch - 650) / 150);
+        if (userDistanceToSite <= 1800 && userDistanceToSite > 650) {
+            if      (userDistanceToSite > 1500) beaconTarget = Math.max(0, 1 - ((userDistanceToSite - 1500) / 300));
+            else if (userDistanceToSite < 800)  beaconTarget = Math.max(0, (userDistanceToSite - 650) / 150);
             else                                  beaconTarget = 1.0;
         }
         // ACT 1: Fireworks ≤800m; suppressed above to save GPU during the approach
-        showFireworks = userDistanceToChurch <= 800;
+        showFireworks = userDistanceToSite <= 800;
         // ACT 2: Marquee materialises 400→150m
-        const marqueeTarget = userDistanceToChurch <= 400
-            ? Math.max(0, 1 - ((userDistanceToChurch - 150) / 250)) : 0;
+        const marqueeTarget = userDistanceToSite <= 400
+            ? Math.max(0, 1 - ((userDistanceToSite - 150) / 250)) : 0;
         // ACT 3: Stat panels emerge 100→40m
-        const statsTarget = userDistanceToChurch <= 100
-            ? Math.max(0, 1 - ((userDistanceToChurch - 40) / 60)) : 0;
+        const statsTarget = userDistanceToSite <= 100
+            ? Math.max(0, 1 - ((userDistanceToSite - 40) / 60)) : 0;
 
         beaconBaseOpacity  += (beaconTarget  * 0.7 - beaconBaseOpacity)  * 0.02;
         marqueeBaseOpacity += (marqueeTarget * 0.8 - marqueeBaseOpacity) * 0.02;
@@ -359,23 +437,19 @@ function _animate() {
 
         if (!_actBeaconFired && beaconBaseOpacity > 0.01) {
             _actBeaconFired = true;
-            recordActEvent('beacon_on', userDistanceToChurch);
-            console.log(`[FIELD:act] beacon_on dist=${Math.round(userDistanceToChurch)}m`);
+            recordActEvent('beacon_on', userDistanceToSite);
         }
         if (!_actFwFired && showFireworks) {
             _actFwFired = true;
-            recordActEvent('fireworks_on', userDistanceToChurch);
-            console.log(`[FIELD:act] fireworks_on dist=${Math.round(userDistanceToChurch)}m`);
+            recordActEvent('fireworks_on', userDistanceToSite);
         }
         if (!_actMqFired && marqueeBaseOpacity > 0.01) {
             _actMqFired = true;
-            recordActEvent('marquee_on', userDistanceToChurch);
-            console.log(`[FIELD:act] marquee_on dist=${Math.round(userDistanceToChurch)}m`);
+            recordActEvent('marquee_on', userDistanceToSite);
         }
         if (!_actStFired && statsBaseOpacity > 0.01) {
             _actStFired = true;
-            recordActEvent('stats_on', userDistanceToChurch);
-            console.log(`[FIELD:act] stats_on dist=${Math.round(userDistanceToChurch)}m`);
+            recordActEvent('stats_on', userDistanceToSite);
         }
 
         arGroup.children.forEach(child => {

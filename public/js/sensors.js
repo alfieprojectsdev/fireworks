@@ -1,6 +1,6 @@
 import { getDistanceKm, getBearing } from './geo.js';
 import {
-    TARGET_LAT, TARGET_LNG,
+    SITES, nearestSite, getActiveSite,
     getCamera, startExperience,
     setNativeOrientationActive, setUserDistance,
     isExperienceStarted, clearWatchPosition,
@@ -50,19 +50,32 @@ function _stageLabel(distM) {
     return 'full_experience';
 }
 
-function _buildHUD(lat, lng, acc, src, distM, bearingDeg) {
-    const cp   = _nearestCheckpoint(lat, lng);
-    const diff = Math.round(distM - cp.expectedM);
-    const sign = diff >= 0 ? '+' : '';
+// Distance (m) + bearing (deg) from a position to a specific site.
+function _geoTo(lat, lng, site) {
+    const metres     = getDistanceKm(lat, lng, site.lat, site.lng) * 1000;
+    const bearingDeg = ((getBearing(lat, lng, site.lat, site.lng) * 180 / Math.PI) + 360) % 360;
+    return { metres, bearingDeg };
+}
+
+function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
     const ali  = getAlignmentData();
     const camStr = ali                 ? `${ali.camDeg}&deg;`   : '&mdash;';
     const arStr  = ali && ali.arDeg    ? `${ali.arDeg}&deg;`    : '&mdash;';
     const dStr   = ali && ali.deltaDeg ? `${ali.deltaDeg}&deg;` : '&mdash;';
+    let siteRefStr;
+    if (site && site.id === 'church') {
+        const cp   = _nearestCheckpoint(lat, lng);
+        const diff = Math.round(distM - cp.expectedM);
+        const sign = diff >= 0 ? '+' : '';
+        siteRefStr = `&asymp; ${cp.name} &nbsp; &Delta;${sign}${diff}m`;
+    } else {
+        siteRefStr = `&asymp; &mdash;`;
+    }
     return [
         `[${src}] &plusmn;${acc}m`,
         `${lat.toFixed(4)} / ${lng.toFixed(4)}`,
         `dist: ${Math.round(distM)}m &nbsp; brg: ${bearingDeg.toFixed(1)}&deg;`,
-        `&asymp; ${cp.name} &nbsp; &Delta;${sign}${diff}m &nbsp; exp:${cp.expectedM}m`,
+        `site: ${site ? site.id : '&mdash;'} &nbsp; ${siteRefStr}`,
         `stage: ${_stageLabel(distM)}`,
         `cam: ${camStr} &nbsp; AR: ${arStr} &nbsp; &Delta;: ${dStr}`,
         `<span data-action="export" style="pointer-events:auto;cursor:pointer;text-decoration:underline;opacity:0.8">&#x2B07; Export Session</span>`,
@@ -81,20 +94,18 @@ export function startWebGeoInterval() {
     _webGeoIntervalId = setInterval(() => {
         if (navigator.geolocation && !isExperienceStarted()) {
             navigator.geolocation.getCurrentPosition(pos => {
-                const lat        = pos.coords.latitude;
-                const lng        = pos.coords.longitude;
-                const metres     = getDistanceKm(lat, lng, TARGET_LAT, TARGET_LNG) * 1000;
-                const acc        = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
-                const bearingDeg = ((getBearing(lat, lng, TARGET_LAT, TARGET_LNG) * 180 / Math.PI) + 360) % 360;
-                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'web', metres, bearingDeg);
-                recordGPS(lat, lng, acc, 'web', metres, bearingDeg, getAlignmentData());
-                console.log(`[FIELD:gps] src=web dist=${Math.round(metres)}m acc=±${acc}m brg=${bearingDeg.toFixed(1)}°`);
-                if (metres <= 1800) {
+                const lat  = pos.coords.latitude;
+                const lng  = pos.coords.longitude;
+                const acc  = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
+                const near = nearestSite(lat, lng);
+                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'web', near.distM, near.bearingDeg, near.site);
+                recordGPS(lat, lng, acc, 'web', near.distM, near.bearingDeg, getAlignmentData(), near.site.id);
+                if (near.distM <= 1800) {
                     clearInterval(_webGeoIntervalId);
                     _webGeoIntervalId = null;
-                    startExperience(lat, lng, false);
+                    startExperience(near.site, lat, lng, false);
                 } else {
-                    document.getElementById('status-message').innerText = formatDistanceHint(metres);
+                    document.getElementById('status-message').innerText = formatDistanceHint(near.distM);
                 }
             }, (err) => {
                 // A missing error callback leaves permission-denied unrecoverable at the venue.
@@ -123,7 +134,7 @@ export function startWebGeoInterval() {
  * 4. If SensorBridge is absent (non-Capacitor env), startWebGeoInterval() runs immediately.
  */
 export function bootstrapSensors() {
-    initRecorder(TARGET_LAT, TARGET_LNG);
+    initRecorder(SITES);
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SensorBridge) {
         const SensorBridge = window.Capacitor.Plugins.SensorBridge;
 
@@ -138,22 +149,27 @@ export function bootstrapSensors() {
             window.__nativeLocationActive = true;
             clearWatchPosition(); // cancel any watchPosition started by startExperience()
 
-            const lat        = data.latitude;
-            const lng        = data.longitude;
-            const metres     = getDistanceKm(lat, lng, TARGET_LAT, TARGET_LNG) * 1000;
-            const acc        = data.accuracy != null ? Math.round(data.accuracy) : '?';
-            const bearingDeg = ((getBearing(lat, lng, TARGET_LAT, TARGET_LNG) * 180 / Math.PI) + 360) % 360;
-            document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', metres, bearingDeg);
-            recordGPS(lat, lng, acc, 'native', metres, bearingDeg, getAlignmentData());
-            console.log(`[FIELD:gps] src=native dist=${Math.round(metres)}m acc=±${acc}m brg=${bearingDeg.toFixed(1)}°`);
+            const lat = data.latitude;
+            const lng = data.longitude;
+            const acc = data.accuracy != null ? Math.round(data.accuracy) : '?';
 
-            if (!isExperienceStarted() && metres <= 1800) {
-                if (_webGeoIntervalId !== null) { clearInterval(_webGeoIntervalId); _webGeoIntervalId = null; }
-                startExperience(lat, lng, false);
-            } else if (isExperienceStarted() && !_isTestMode) {
-                setUserDistance(metres);
-            } else if (!isExperienceStarted()) {
-                document.getElementById('status-message').innerText = formatDistanceHint(metres);
+            if (isExperienceStarted()) {
+                // Locked to the triggering site for the rest of the session.
+                const site = getActiveSite();
+                const { metres, bearingDeg } = _geoTo(lat, lng, site);
+                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', metres, bearingDeg, site);
+                recordGPS(lat, lng, acc, 'native', metres, bearingDeg, getAlignmentData(), site.id);
+                if (!_isTestMode) setUserDistance(metres);
+            } else {
+                const near = nearestSite(lat, lng);
+                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', near.distM, near.bearingDeg, near.site);
+                recordGPS(lat, lng, acc, 'native', near.distM, near.bearingDeg, getAlignmentData(), near.site.id);
+                if (near.distM <= 1800) {
+                    if (_webGeoIntervalId !== null) { clearInterval(_webGeoIntervalId); _webGeoIntervalId = null; }
+                    startExperience(near.site, lat, lng, false);
+                } else {
+                    document.getElementById('status-message').innerText = formatDistanceHint(near.distM);
+                }
             }
         });
 

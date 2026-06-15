@@ -33,6 +33,20 @@
             transition: opacity 2s ease-in-out;
         }
 
+        /* Suppress the WebView's built-in play-button overlay. Chromium renders a
+           centered "start playback" glyph in the <video> shadow DOM before/while
+           a MediaStream plays — there is no image asset; it's a native control.
+           These shadow pseudo-elements remove it so the camera feed is clean. */
+        #camera-bg::-webkit-media-controls,
+        #camera-bg::-webkit-media-controls-overlay-play-button,
+        #camera-bg::-webkit-media-controls-start-playback-button,
+        #camera-bg::-webkit-media-controls-play-button,
+        #camera-bg::-webkit-media-controls-panel {
+            display: none !important;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
         #ar-canvas {
             z-index: 2;
             position: absolute;
@@ -192,7 +206,7 @@
     <div id="hud-toggle"></div>
 
     <script type="module">
-        import { initScene, startExperience, TARGET_LAT, TARGET_LNG } from './js/scene.js';
+        import { initScene, startExperience, SITES } from './js/scene.js';
         import { toggleEarphonesMode } from './js/audio.js';
         import { bootstrapSensors, setTestMode } from './js/sensors.js';
         import { exportSession } from './js/session-recorder.js';
@@ -233,7 +247,9 @@
                 // configs without the VIBRATE permission declared in AndroidManifest.
                 if (typeof navigator.vibrate === 'function') navigator.vibrate([40, 60, 120]);
                 setTestMode(true);
-                startExperience(TARGET_LAT, TARGET_LNG, true);
+                // Test mode previews the primary site (church/2008). Site 2 (2005)
+                // is verified on location or via a future test-site selector.
+                startExperience(SITES[0], SITES[0].lat, SITES[0].lng, true);
             } else {
                 // 60ms matches Material Design short-tick (keyboard tap 50ms, button 70ms).
                 if (typeof navigator.vibrate === 'function') navigator.vibrate(60);

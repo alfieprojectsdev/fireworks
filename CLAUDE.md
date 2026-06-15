@@ -41,8 +41,8 @@ Primary logic is split across two files: **`public/index.html`** (all JS, Three.
 
 **3D scene structure (`createARGroup`):**
 - A `THREE.Group` positioned at the GPS-calculated offset from the user (X=East, Z=North in Three.js)
-- Cylindrical marquee: `CylinderGeometry` with a 4096px canvas texture wrapping "Happy Anniversary, Bhaze!" four times, with `DoubleSide` rendering so the user can walk inside it
-- Four `PlaneGeometry` stat panels (Years/Months/Weeks/Days since 2008-05-15) arranged in a square at 0°/90°/180°/270° facing outward, 20m radius
+- Pylon monument at shrine scale (~Quezon Memorial Shrine, ~66m): a "crown" message cylinder (`CylinderGeometry(35,35,12)`, 4096×512 canvas texture of the active site's marquee, `DoubleSide`) floating at world y≈50–62, capping four vertical stat **pylons**
+- Four `PlaneGeometry` stat pylons (Years/Months/Hours/Days from the active site's anchor date) — tall columns of upright stacked glyphs (`_createPylonTexture`), ringed at 0°/90°/180°/270°, `translateZ(35)`, 50m tall (ground to world y≈50). An earlier "Tower of Light" tractor-beam cone was rejected as tacky — do not reintroduce light-beam forms
 - `DeviceOrientationControls` ties the virtual camera to the phone's physical compass + gyroscope
 - The compass-calibration banner is bounded by an 8-second timer; if `deviceorientationabsolute` never arrives the banner switches to "heading active" (when any `deviceorientation` event has been observed) or fades silently. The Three.js `DeviceOrientationControls` continues to drive the camera regardless of banner state.
 
@@ -55,11 +55,15 @@ Primary logic is split across two files: **`public/index.html`** (all JS, Three.
 
 ## Key Constants
 
-- `targetLat = 14.658888478751235`, `targetLng = 121.071173166497` — the church location
-- Trigger radius: 0.1 km (100 meters)
-- AR group spawn height: 15 meters (Y-axis)
-- Marquee cylinder radius: 20 meters, height: 4 meters
-- Wedding date: `new Date('2008-05-15T00:00:00')`
+- `targetLat = 14.658888478751235`, `targetLng = 121.071173166497` — the church location (site id: `church`)
+- `originLat = 14.651726103123695`, `originLng = 121.05472805488795` — the origin location (site id: `origin`); anchor date `2005-10-15`, marks when Alfie and Bhazel became a couple — the "monthsary" site, distinct from the 2008-05-15 wedding
+- Trigger radius: 1800 m per site; the two sites are ~1.94 km apart so ranges overlap slightly — `nearestSite()` + the active-site lock guarantee exactly one site triggers
+- The app is now multi-site: `SITES` array in `public/js/scene.js`, nearest in-range site (≤1800 m) triggers and locks for the session via `getActiveSite()`
+- AR group spawn height: 15 meters (Y-axis); ground is at local y=−15
+- Crown cylinder: radius 35 m, height 12 m, centered local y=41 (world ≈50–62 m)
+- Stat pylons: `translateZ(35)`, height 50 m, centered local y=10 (ground to world ≈50 m)
+- Wedding date: `new Date('2008-05-15T00:00:00')` (church site anchor)
+- Monthsary date: `new Date('2005-10-15T00:00:00')` (origin site anchor)
 
 ## Capacitor Notes
 
