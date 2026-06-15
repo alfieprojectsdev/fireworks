@@ -115,6 +115,46 @@ export function initScene() {
     _animate();
 }
 
+// Builds the wrapping marquee texture for a given line of text. 4096x512 so the
+// 12 m-tall crown cylinder reads crisply at distance; text is drawn three times
+// across the strip so it repeats evenly around the cylinder.
+function _createMarqueeTexture(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 4096; canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    ctx.font         = '144px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(255, 220, 160, 0.4)';
+    ctx.shadowBlur   = 16;
+    ctx.fillStyle    = 'white';
+    for (let i = 0; i < 3; i++)
+        ctx.fillText(text, Math.round((i + 0.5) * 4096 / 3), 256);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
+}
+
+// Renders a stat as a vertical-pylon texture: characters stacked top-to-bottom,
+// upright. Each glyph gets a square cell so the caller can size the plane (width =
+// height / nChars) and keep glyphs undistorted. Returns the texture + glyph count.
+function _createPylonTexture(text) {
+    const chars = [...text];
+    const cell = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width  = cell;
+    canvas.height = cell * chars.length;
+    const ctx = canvas.getContext('2d');
+    ctx.font         = '180px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(255, 220, 160, 0.4)';
+    ctx.shadowBlur   = 12;
+    ctx.fillStyle    = 'rgba(255, 255, 255, 0.6)';
+    chars.forEach((ch, i) => ctx.fillText(ch, cell / 2, cell * (i + 0.5)));
+    return { texture: new THREE.CanvasTexture(canvas), nChars: chars.length };
+}
+
 function _createARGroup(userLat, userLng, isTestMode) {
     const group = new THREE.Group();
 
@@ -126,28 +166,23 @@ function _createARGroup(userLat, userLng, isTestMode) {
         group.position.set(dist * Math.sin(bearing), 15, -dist * Math.cos(bearing));
     }
 
-    // Cylindrical marquee — radius sized to clear the chapel dome (~55m wide)
-    const mCanvas = document.createElement('canvas');
-    const mCtx    = mCanvas.getContext('2d');
-    mCanvas.width = 4096; mCanvas.height = 256;
-    mCtx.font          = '72px sans-serif';
-    mCtx.textAlign     = 'center';
-    mCtx.textBaseline  = 'middle';
-    mCtx.shadowColor   = 'rgba(255, 220, 160, 0.4)';
-    mCtx.shadowBlur    = 8;
-    mCtx.fillStyle     = 'white';
-    for (let i = 0; i < 3; i++)
-        mCtx.fillText(_activeSite.marquee, Math.round((i + 0.5) * 4096 / 3), 128);
+    // ── Monument (Quezon-shrine scale) ───────────────────────────────────────
+    // Ground is at local y = -15 (the group origin sits 15 m up). The monument is
+    // four vertical stat pylons (built below) ringed at the compass points, capped
+    // by a message crown band. Pylons rise from the ground to world y≈50; the crown
+    // wraps just above them at world y≈50–62 (~Quezon Memorial Shrine's ~66 m).
 
-    const mTex = new THREE.CanvasTexture(mCanvas);
-    mTex.wrapS = THREE.RepeatWrapping;
+    // The Crown: message text cylinder capping the pylon ring. Assigned to
+    // marqueeCylinder so the existing spin + fade envelope in _animate apply.
     marqueeCylinder = new THREE.Mesh(
-        new THREE.CylinderGeometry(30, 30, 4, 64, 1, true),
+        new THREE.CylinderGeometry(35, 35, 12, 64, 1, true),
         new THREE.MeshBasicMaterial({
-            map: mTex, transparent: true, opacity: 0,
+            map: _createMarqueeTexture(_activeSite.marquee),
+            transparent: true, opacity: 0,
             blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
         })
     );
+    marqueeCylinder.position.y = 41; // height 12 centered here -> spans local 35–47 (world 50–62)
     group.add(marqueeCylinder);
 
     // ACT 0: Orbital Beacon — 2 km pillar visible from PHIVOLCS rooftop (~1.5 km away)
@@ -181,33 +216,30 @@ function _createARGroup(userLat, userLng, isTestMode) {
     let monthsRaw = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
     if (now.getDate() < start.getDate()) monthsRaw--;
 
+    // Four stat pylons — tall vertical columns of stacked glyphs, ringed at the
+    // compass points and rising from the ground to just under the crown band.
+    const PYLON_H = 50; // metres: bottom at local -15 (ground), top at local +35 (world 50)
     [
         { text: `${years} Years`,      rotY: 0 },
         { text: `${monthsRaw} Months`, rotY: Math.PI / 2 },
         { text: `${hours} Hours`,       rotY: Math.PI },
         { text: `${days} Days`,        rotY: -Math.PI / 2 },
     ].forEach(stat => {
-        const sCanvas = document.createElement('canvas');
-        sCanvas.width = 512; sCanvas.height = 256;
-        const sCtx = sCanvas.getContext('2d');
-        sCtx.font = '56px sans-serif';
-        sCtx.textAlign = 'center';
-        sCtx.textBaseline = 'middle';
-        sCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        sCtx.fillText(stat.text, 256, 128);
-        const sMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(20, 10),
+        const { texture, nChars } = _createPylonTexture(stat.text);
+        const w = PYLON_H / nChars; // square glyph cells
+        const pMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(w, PYLON_H),
             new THREE.MeshBasicMaterial({
-                map: new THREE.CanvasTexture(sCanvas),
+                map: texture,
                 transparent: true, opacity: 0,
                 blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
             })
         );
-        sMesh.position.set(0, -10, 0);
-        sMesh.rotation.y = stat.rotY;
-        sMesh.translateZ(30); // push outward to match the 30m cylinder radius
-        sMesh.userData.isStat = true;
-        group.add(sMesh);
+        pMesh.position.set(0, 10, 0);   // center: bottom at local -15 (ground), top at +35 (world 50)
+        pMesh.rotation.y = stat.rotY;
+        pMesh.translateZ(35);           // ring flush with the 35 m crown radius
+        pMesh.userData.isStat = true;
+        group.add(pMesh);
     });
 
     // Ground glow: faint additive ring at Y=0 under the church
