@@ -282,6 +282,11 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     try { document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
     document.getElementById('status-text').style.opacity = '0';
 
+    // If the camera is denied/unavailable, the catch below re-shows the splash
+    // with the skip instruction. The 1s splash-hide timer must NOT fire in that
+    // case, or the only actionable message gets hidden before it can be read.
+    let cameraFailed = false;
+
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
         .then(stream => {
             const vid = document.getElementById('camera-bg');
@@ -289,9 +294,12 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
             vid.play().catch(() => {});
         })
         .catch(() => {
+            cameraFailed = true;
             document.getElementById('status-message').innerText =
                 'Camera unavailable. Tap the upper-right corner three times to skip.';
-            document.getElementById('status-text').style.opacity = '1';
+            const st = document.getElementById('status-text');
+            st.style.opacity = '1';
+            st.style.display = '';   // revert to stylesheet value (in case the 1s timer already hid it)
         });
 
     ensureAudioContext();
@@ -396,7 +404,8 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     }
 
     setTimeout(() => {
-        document.getElementById('status-text').style.display = 'none';
+        // Keep the splash (with the skip instruction) up if the camera failed.
+        if (!cameraFailed) document.getElementById('status-text').style.display = 'none';
         document.getElementById('camera-bg').style.opacity = '1';
         // showFireworks is distance-driven in _animate() — no longer set here
     }, 1000);
