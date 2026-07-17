@@ -75,6 +75,24 @@ export function setUserDistance(metres) {
     userDistanceToSite = metres;
 }
 
+// --- Geo re-anchoring ---
+// The camera never translates (orientation-only tracking at the scene origin),
+// so the AR group must be repositioned on every GPS fix to stay pinned to the
+// site as the wearer walks. Without this the monument kept its trigger-time
+// offset forever and never grew closer. Updates lerp in _animate() so GPS
+// jitter doesn't teleport the monument.
+let _sceneTestMode = false;
+const _anchorTarget = new THREE.Vector3();
+let _anchorPending = false;
+
+export function updateARAnchor(lat, lng) {
+    if (!arGroup || _sceneTestMode) return;
+    const dist    = getDistanceKm(lat, lng, _activeSite.lat, _activeSite.lng) * 1000;
+    const bearing = getBearing(lat, lng, _activeSite.lat, _activeSite.lng);
+    _anchorTarget.set(dist * Math.sin(bearing), 15, -dist * Math.cos(bearing));
+    _anchorPending = true;
+}
+
 const _fwdScratch = new THREE.Vector3();
 
 export function getAlignmentData() {
@@ -101,7 +119,11 @@ export function clearWatchPosition() {
 export function initScene() {
     const canvas = document.getElementById('ar-canvas');
     scene    = new THREE.Scene();
-    camera   = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    // Far plane must cover the whole approach: the experience triggers at up to
+    // 1800 m and the beacon apex sits 2000 m up (~2.7 km slant range from the
+    // trigger ring). At 1000 the monument was fully clipped — invisible — for
+    // any real approach; only the 40 m test-mode spawn ever rendered.
+    camera   = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -275,6 +297,7 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     if (_experienceStarted) return;
     _experienceStarted = true;
     _activeSite = site;   // lock the experience to this site for its lifetime
+    _sceneTestMode = isTestMode;
 
     // _webGeoIntervalId is owned by sensors.js; both trigger paths (web-geo success callback
     // and onNativeLocationUpdate) clear it via inline clearInterval() before calling here.
@@ -355,8 +378,21 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     arGroup = _createARGroup(uLat, uLng, isTestMode);
     scene.add(arGroup);
 
-    // 60s after trigger: fade in a personal inner cylinder
-    setTimeout(() => {
+    // Personal inner cylinder: starts a 60 s countdown only once the wearer is
+    // truly close (≤100 m, the stats act). Counting from the trigger instead
+    // would play the payoff while the monument is still ~1.8 km away. In test
+    // mode userDistanceToSite is 0, so the gate passes immediately and the
+    // original 60 s behavior is preserved.
+    let _msgArmed = false;
+    const _msgGate = setInterval(() => {
+        if (_msgArmed) { clearInterval(_msgGate); return; }
+        if (userDistanceToSite > 100) return;
+        _msgArmed = true;
+        clearInterval(_msgGate);
+        setTimeout(_buildMessageCylinder, 60000);
+    }, 1000);
+
+    function _buildMessageCylinder() {
         if (!arGroup) return;
         const msgStart = new Date(_activeSite.anchor);
         const msgNow   = new Date();
@@ -387,7 +423,7 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
             msgMat.opacity = Math.min(msgMat.opacity + 0.008, 0.65);
             if (msgMat.opacity >= 0.65) clearInterval(msgFade);
         }, 50);
-    }, 60000);
+    }
 
     if (isTestMode) {
         // Test mode: simulate standing at the church — reveal everything immediately
@@ -400,6 +436,7 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
             userDistanceToSite = getDistanceKm(
                 pos.coords.latitude, pos.coords.longitude, _activeSite.lat, _activeSite.lng
             ) * 1000;
+            updateARAnchor(pos.coords.latitude, pos.coords.longitude);
         }, null, { enableHighAccuracy: true });
     }
 
@@ -411,8 +448,19 @@ export function startExperience(site = SITES[0], uLat = site.lat, uLng = site.ln
     }, 1000);
 }
 
+// All per-frame increments (opacity lerps, firework physics, rotations) were
+// tuned at ~60 Hz. On 120 Hz displays (the A56) requestAnimationFrame doubles
+// the rate and everything would run 2x speed. Gate state advancement to at
+// most once per 12 ms; the extra frames still update orientation and re-render,
+// so panning keeps the display's full smoothness.
+let _lastPhysicsAt = 0;
+
 function _animate() {
     requestAnimationFrame(_animate);
+
+    const _now = performance.now();
+    const doPhysics = _now - _lastPhysicsAt >= 12;
+    if (doPhysics) _lastPhysicsAt = _now;
 
     // Skip controls.update() when native path is active to avoid overwriting
     // camera.quaternion set by the onNativeOrientationUpdate handler.
@@ -420,8 +468,19 @@ function _animate() {
 
     syncAudioListener(camera);
 
+    if (!doPhysics) {
+        renderer.render(scene, camera);
+        return;
+    }
+
     tickIllumination();
     const textIllumination = getTextIllumination();
+
+    // Glide toward the latest GPS-derived anchor instead of teleporting.
+    if (arGroup && _anchorPending) {
+        arGroup.position.lerp(_anchorTarget, 0.02);
+        if (arGroup.position.distanceTo(_anchorTarget) < 0.5) _anchorPending = false;
+    }
 
     if (arGroup) {
         // ACT 0: Beacon fades in 1800→1500m, holds solid 1500→800m, fades out 800→650m
@@ -461,9 +520,15 @@ function _animate() {
             recordActEvent('stats_on', userDistanceToSite);
         }
 
+        // The firework pulse is scaled by each act's own base opacity so an
+        // explosion can't reveal the marquee/stats before their act begins
+        // (fireworks start at 800 m; marquee at 400 m, stats at 100 m). Base
+        // ≥0.2 restores the full tuned pulse.
+        const mqPulse = textIllumination * 0.6 * Math.min(1, marqueeBaseOpacity * 5);
+        const stPulse = textIllumination * 0.4 * Math.min(1, statsBaseOpacity   * 5);
         arGroup.children.forEach(child => {
-            if      (child === marqueeCylinder)          child.material.opacity = marqueeBaseOpacity + (textIllumination * 0.6);
-            else if (child.userData.isStat)              child.material.opacity = (statsBaseOpacity * 0.5) + (textIllumination * 0.4);
+            if      (child === marqueeCylinder)          child.material.opacity = marqueeBaseOpacity + mqPulse;
+            else if (child.userData.isStat)              child.material.opacity = (statsBaseOpacity * 0.5) + stPulse;
             else if (child.userData.isBeacon)            child.material.opacity = beaconBaseOpacity;
             else if (child.userData.isGround)            child.material.opacity = 0.025 + 0.015 * Math.sin(performance.now() * 0.0006);
             else if (child.userData.isMessageCylinder)   child.rotation.y += 0.003;
