@@ -40,9 +40,12 @@ import com.google.android.gms.location.Priority;
  * double JS init, and double fallback gating in the single-file consumer
  * {@code public/index.html}. (ref: DL-001)</p>
  *
- * <p>Auto-discovered by Capacitor v5+ classpath scanning via {@code @CapacitorPlugin}
- * annotation; {@code MainActivity.java} requires no {@code registerPlugin()} override.
- * (ref: DL-002)</p>
+ * <p>NOT auto-discovered: Capacitor only enumerates plugins from npm packages via the
+ * generated {@code capacitor.plugins.json}; an app-local plugin like this one must be
+ * registered explicitly in {@code MainActivity.onCreate()} with
+ * {@code registerPlugin(SensorBridgePlugin.class)} before {@code super.onCreate()}.
+ * (DL-002 originally claimed annotation-based auto-discovery — that was wrong, and the
+ * plugin was silently dead until the explicit registration was added.)</p>
  *
  * <p>Thread safety: {@link #onSensorChanged} is dispatched on a SensorManager background
  * HandlerThread. {@code notifyListeners} posts through Capacitor's bridge to the WebView
