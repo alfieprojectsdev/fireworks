@@ -104,8 +104,22 @@ export function exportSession() {
 
     const fname = `session_${Date.now()}.json`;
 
+    // Path order is WebView-driven: the Android WebView has no Web Share API and
+    // ignores <a download> on blob: URLs (no DownloadListener), which made export
+    // a silent no-op on device. Clipboard works in the WebView under a user
+    // gesture (the tap that got us here), so it is the reliable middle path.
     if (navigator.canShare && navigator.canShare({ text: payload })) {
         navigator.share({ title: fname, text: payload })
+            .catch(() => _clipboardOrBlob(payload, fname));
+    } else {
+        _clipboardOrBlob(payload, fname);
+    }
+}
+
+function _clipboardOrBlob(payload, fname) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payload)
+            .then(() => alert(`Session JSON copied to clipboard (${payload.length.toLocaleString()} chars) — paste into any notes/chat app to save.`))
             .catch(() => _blobDownload(payload, fname));
     } else {
         _blobDownload(payload, fname);

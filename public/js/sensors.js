@@ -4,7 +4,7 @@ import {
     getCamera, startExperience,
     setNativeOrientationActive, setUserDistance,
     isExperienceStarted, clearWatchPosition,
-    getAlignmentData,
+    getAlignmentData, updateARAnchor,
 } from './scene.js';
 import { initRecorder, recordGPS, recordOrientation } from './session-recorder.js';
 
@@ -14,7 +14,20 @@ let _isTestMode            = false;
 let _lastNativeLocationAt  = 0;
 
 // Called by index.html secret-override handler before calling startExperience().
-export function setTestMode(val) { _isTestMode = val; }
+// Ignored once a real (GPS-triggered) experience is running: flipping the flag
+// then would freeze distance-driven staging (native updates skip setUserDistance
+// in test mode) without changing anything else.
+export function setTestMode(val) {
+    if (val && isExperienceStarted()) return;
+    _isTestMode = val;
+}
+
+function _stopWebGeoInterval() {
+    if (_webGeoIntervalId !== null) {
+        clearInterval(_webGeoIntervalId);
+        _webGeoIntervalId = null;
+    }
+}
 
 function formatDistanceHint(metres) {
     if (metres < 1000) return `Approx ${Math.floor(metres / 10) * 10}m to go`;
@@ -71,6 +84,9 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
     } else {
         siteRefStr = `&asymp; &mdash;`;
     }
+    // Note: the Export Session button is NOT part of these lines — it lives in a
+    // static sibling element (#hud-export in index.html) so the 1 Hz innerHTML
+    // rebuild can't replace it mid-tap and swallow the click.
     return [
         `[${src}] &plusmn;${acc}m`,
         `${lat.toFixed(4)} / ${lng.toFixed(4)}`,
@@ -78,7 +94,6 @@ function _buildHUD(lat, lng, acc, src, distM, bearingDeg, site) {
         `site: ${site ? site.id : '&mdash;'} &nbsp; ${siteRefStr}`,
         `stage: ${_stageLabel(distM)}`,
         `cam: ${camStr} &nbsp; AR: ${arStr} &nbsp; &Delta;: ${dStr}`,
-        `<span data-action="export" style="pointer-events:auto;cursor:pointer;text-decoration:underline;opacity:0.8">&#x2B07; Export Session</span>`,
     ].join('<br>');
 }
 
@@ -98,11 +113,10 @@ export function startWebGeoInterval() {
                 const lng  = pos.coords.longitude;
                 const acc  = pos.coords.accuracy != null ? Math.round(pos.coords.accuracy) : '?';
                 const near = nearestSite(lat, lng);
-                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'web', near.distM, near.bearingDeg, near.site);
+                document.getElementById('hud-lines').innerHTML = _buildHUD(lat, lng, acc, 'web', near.distM, near.bearingDeg, near.site);
                 recordGPS(lat, lng, acc, 'web', near.distM, near.bearingDeg, getAlignmentData(), near.site.id);
                 if (near.distM <= 1800) {
-                    clearInterval(_webGeoIntervalId);
-                    _webGeoIntervalId = null;
+                    _stopWebGeoInterval();
                     startExperience(near.site, lat, lng, false);
                 } else {
                     document.getElementById('status-message').innerText = formatDistanceHint(near.distM);
@@ -115,8 +129,12 @@ export function startWebGeoInterval() {
                 else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable. Step outside for clearer sky.';
                 else                                            msg = 'Location is taking longer than usual...';
                 document.getElementById('status-message').innerText = msg;
-                document.getElementById('debug-hud').innerHTML = `GPS error ${err.code}`;
-            }, { enableHighAccuracy: true });
+                document.getElementById('hud-lines').innerHTML = `GPS error ${err.code}`;
+            // timeout: without it the default is Infinity — a GPS that can't fix
+            // never invokes the error callback and the splash hangs at "Locating…"
+            // with no feedback. 8 s < the 3 s poll cadence x3, so at most two
+            // requests overlap. maximumAge lets the OS serve a fresh-enough fix.
+            }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 2000 });
         }
     }, 3000);
 }
@@ -148,6 +166,10 @@ export function bootstrapSensors() {
             _lastNativeLocationAt = Date.now();
             window.__nativeLocationActive = true;
             clearWatchPosition(); // cancel any watchPosition started by startExperience()
+            // Native fixes flow at 1 Hz — the 3 s web fallback (started by the 2 s
+            // cold-start watchdog) is redundant from here on and would double up
+            // HUD writes and recorder entries.
+            _stopWebGeoInterval();
 
             const lat = data.latitude;
             const lng = data.longitude;
@@ -157,15 +179,17 @@ export function bootstrapSensors() {
                 // Locked to the triggering site for the rest of the session.
                 const site = getActiveSite();
                 const { metres, bearingDeg } = _geoTo(lat, lng, site);
-                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', metres, bearingDeg, site);
+                document.getElementById('hud-lines').innerHTML = _buildHUD(lat, lng, acc, 'native', metres, bearingDeg, site);
                 recordGPS(lat, lng, acc, 'native', metres, bearingDeg, getAlignmentData(), site.id);
-                if (!_isTestMode) setUserDistance(metres);
+                if (!_isTestMode) {
+                    setUserDistance(metres);
+                    updateARAnchor(lat, lng);   // keep the monument geo-pinned as the wearer walks
+                }
             } else {
                 const near = nearestSite(lat, lng);
-                document.getElementById('debug-hud').innerHTML = _buildHUD(lat, lng, acc, 'native', near.distM, near.bearingDeg, near.site);
+                document.getElementById('hud-lines').innerHTML = _buildHUD(lat, lng, acc, 'native', near.distM, near.bearingDeg, near.site);
                 recordGPS(lat, lng, acc, 'native', near.distM, near.bearingDeg, getAlignmentData(), near.site.id);
                 if (near.distM <= 1800) {
-                    if (_webGeoIntervalId !== null) { clearInterval(_webGeoIntervalId); _webGeoIntervalId = null; }
                     startExperience(near.site, lat, lng, false);
                 } else {
                     document.getElementById('status-message').innerText = formatDistanceHint(near.distM);

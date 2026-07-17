@@ -202,7 +202,13 @@
     <div id="audio-mode-btn" title="Toggle earphone mode">♪</div>
     <div id="compass-indicator"></div>
     <div id="secret-override"></div>
-    <div id="debug-hud">acquiring GPS…</div>
+    <!-- #hud-lines is rebuilt ~1 Hz by sensors.js; the export button stays a
+         static sibling so the rebuild can never swallow a tap on it. -->
+    <div id="debug-hud">
+        <div id="hud-lines">acquiring GPS…</div>
+        <span id="hud-export" data-action="export"
+              style="pointer-events:auto;cursor:pointer;text-decoration:underline;opacity:0.8">&#x2B07; Export Session</span>
+    </div>
     <div id="hud-toggle"></div>
 
     <script type="module">
@@ -237,10 +243,17 @@
             }
         });
 
+        // Same 600 ms window as the HUD toggle: without it, three stray taps at
+        // any point across the whole session — hours apart — would count as a
+        // "triple-tap" and drop the wearer into test mode mid-approach.
         let tapCount = 0;
+        let tapTimer = null;
         document.getElementById('secret-override').addEventListener('click', () => {
             tapCount++;
+            clearTimeout(tapTimer);
+            tapTimer = setTimeout(() => { tapCount = 0; }, 600);
             if (tapCount >= 3) {
+                tapCount = 0;
                 // [40,60,120] = Material action-confirmed short-short-long cadence,
                 // distinguishable from the per-tap 60ms tick.
                 // typeof guard required: navigator.vibrate is absent on some Android WebView
