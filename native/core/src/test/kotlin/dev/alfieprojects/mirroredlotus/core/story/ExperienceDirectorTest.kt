@@ -133,6 +133,19 @@ class ExperienceDirectorTest {
     }
 
     @Test
+    fun `the thermal ladder's firework cap holds`() {
+        val d = ExperienceDirector(Rng(8))
+        d.start(church, church.lat, church.lng, testMode = true)
+        d.maxLiveFireworks = 4
+        var peak = 0
+        repeat(ticksFor(300.0)) {
+            d.tick()
+            peak = maxOf(peak, d.fireworks.liveCount)
+        }
+        assertEquals(4, peak)
+    }
+
+    @Test
     fun `fireworks stay dark beyond 800 m`() {
         val d = ExperienceDirector(Rng(8))
         val far = Geo.destination(church.lat, church.lng, 0.0, 1200.0)

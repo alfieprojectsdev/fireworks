@@ -52,6 +52,8 @@ class RenderTelemetry {
     @Volatile var groupZ = 0.0
     @Volatile var groupPlaced = false
     @Volatile var viewDescription = ""
+    /** System.nanoTime of the newest draw, for the camera-paced watchdog. */
+    @Volatile var lastDrawNanos = 0L
 }
 
 /**
@@ -86,6 +88,19 @@ class ArRenderer(
 
     /** Pose follows the camera frame's exposure time; false = newest sample (A/B switch). */
     @Volatile var syncToCamera = true
+
+    /**
+     * Called (on whatever thread the SurfaceTexture reports on) when a camera
+     * frame lands, so a camera-paced loop can draw it at once.
+     */
+    @Volatile var onCameraFrame: (() -> Unit)? = null
+
+    /**
+     * Fraction of the view's size the GL surface has been shrunk to by the
+     * thermal ladder. Lines are thinned to match, or the compositor's upscale
+     * would thicken the fireworks.
+     */
+    @Volatile var renderScale = 1f
 
     /** GL_MAX_TEXTURE_SIZE capped at 4096, for sizing text bitmaps. */
     @Volatile var maxTextureSize = 4096
@@ -161,6 +176,7 @@ class ArRenderer(
 
     override fun onFrameAvailable(texture: SurfaceTexture) {
         framesPending.incrementAndGet()
+        onCameraFrame?.invoke()
     }
 
     // ---- GLSurfaceView.Renderer --------------------------------------------
@@ -249,6 +265,7 @@ class ArRenderer(
             GLES30.glDisable(GLES30.GL_BLEND)
         }
         telemetry.renderRate.record(nowNanos)
+        telemetry.lastDrawNanos = nowNanos
     }
 
     // ---- frame stages -------------------------------------------------------
@@ -424,7 +441,7 @@ class ArRenderer(
         // stalling on the buffer the GPU is still reading from last frame.
         GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, lineData.size * 4, null, GLES30.GL_STREAM_DRAW)
         GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, floats * 4, lineBuffer)
-        GLES30.glLineWidth(lineWidth)
+        GLES30.glLineWidth((lineWidth * renderScale).coerceAtLeast(1f))
         GLES30.glDrawArrays(GLES30.GL_LINES, 0, vertices)
     }
 

@@ -92,6 +92,12 @@ class ExperienceDirector(
 
     private val fired = BooleanArray(ActEvent.entries.size)
 
+    /**
+     * Cap on live fireworks: the web build's 15, lowered by the thermal ladder
+     * (`ThermalPolicy`) when the phone runs hot. Render thread.
+     */
+    var maxLiveFireworks = 15
+
     var ticks = 0L
         private set
 
@@ -191,9 +197,9 @@ class ExperienceDirector(
         marqueeRotation -= 0.002
         tickMessage()
 
-        if (showFireworks && fireworks.liveCount < 15) {
+        if (showFireworks && fireworks.liveCount < maxLiveFireworks) {
             if (rng.nextDouble() < 0.1) fireworks.spawn(groupX, groupZ)
-            if (rng.nextDouble() < 0.02 && fireworks.liveCount < 13) {
+            if (rng.nextDouble() < 0.02 && fireworks.liveCount < maxLiveFireworks - 2) {
                 fireworks.spawn(groupX, groupZ)
                 fireworks.spawn(groupX, groupZ)
             }

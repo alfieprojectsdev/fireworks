@@ -31,6 +31,7 @@ class SessionRecorder(
     private data class Perf(
         val ts: Long, val fps: Double, val camFps: Double, val camLatencyMs: Double,
         val sensorHz: Double, val poseLagMs: Double,
+        val thermal: Int, val headroom: Double, val quality: Int,
     )
 
     private val lock = Any()
@@ -65,13 +66,23 @@ class SessionRecorder(
         acts.add(Act(tsMs, event.id, Math.round(distanceM), event.expectedM))
     }
 
+    /**
+     * [thermalStatus] is `PowerManager.THERMAL_STATUS_*` (-1 unknown), [headroom]
+     * the 10 s forecast (NaN unknown), [qualityLevel] the thermal ladder's rung.
+     */
     fun recordPerf(
         tsMs: Long, fps: Double, cameraFps: Double, cameraLatencyMs: Double, sensorHz: Double, poseLagMs: Double,
+        thermalStatus: Int = -1, headroom: Double = Double.NaN, qualityLevel: Int = 0,
     ) = synchronized(lock) {
         if (tsMs - lastPerfMs < orientationIntervalMs) return@synchronized
         lastPerfMs = tsMs
         if (perf.size >= maxPerf) perf.removeFirst()
-        perf.addLast(Perf(tsMs, round1(fps), round1(cameraFps), round1(cameraLatencyMs), round1(sensorHz), round1(poseLagMs)))
+        perf.addLast(
+            Perf(
+                tsMs, round1(fps), round1(cameraFps), round1(cameraLatencyMs), round1(sensorHz), round1(poseLagMs),
+                thermalStatus, if (headroom.isNaN()) Double.NaN else Math.round(headroom * 1000) / 1000.0, qualityLevel,
+            ),
+        )
     }
 
     /** Null when nothing has been recorded: the caller tells the wearer instead of sharing an empty file. */
@@ -125,6 +136,7 @@ class SessionRecorder(
             w.beginObject()
                 .field("ts", p.ts).field("fps", p.fps).field("camFps", p.camFps)
                 .field("camLatencyMs", p.camLatencyMs).field("sensorHz", p.sensorHz).field("poseLagMs", p.poseLagMs)
+                .field("thermal", p.thermal).field("headroom", p.headroom).field("quality", p.quality)
                 .endObject()
         }
         w.endArray()

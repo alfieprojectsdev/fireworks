@@ -1,5 +1,6 @@
 package dev.alfieprojects.mirroredlotus.core.ui
 
+import dev.alfieprojects.mirroredlotus.core.perf.ThermalPolicy
 import dev.alfieprojects.mirroredlotus.core.ui.CompassBanner.State
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -125,6 +126,22 @@ class UiLogicTest {
         assertEquals("fps: 59.8  cam: 30.0  sensor: 199Hz", lines[6])
         assertEquals("photon: 61ms  pose: cam-sync lag 48ms", lines[7])
         assertEquals("heading: game+mag", lines[8])
+        assertEquals(9, lines.size)
+    }
+
+    @Test
+    fun `hud shows the thermal state and the rung it chose`() {
+        val hot = PerfSnapshot(
+            34.5, 15.7, 289.0, 199.0, true, 279.0, "game+mag",
+            ThermalSnapshot(ThermalPolicy.STATUS_SEVERE, 0.973, ThermalPolicy.LADDER[2]),
+        )
+        val lines = HudFormatter.lines("fused", 5.0, 0.0, 0.0, 50.0, 0.0, "origin", null, hot)
+        assertEquals("thermal: severe  headroom 0.97  L2 camera 75% fw 6", lines[9])
+        val old = hot.copy(thermal = ThermalSnapshot(ThermalPolicy.STATUS_UNKNOWN, Double.NaN, ThermalPolicy.LADDER[0]))
+        assertEquals(
+            "thermal: unknown  headroom —  L0 full 100% fw 15",
+            HudFormatter.lines("fused", 5.0, 0.0, 0.0, 50.0, 0.0, "origin", null, old)[9],
+        )
     }
 
     @Test

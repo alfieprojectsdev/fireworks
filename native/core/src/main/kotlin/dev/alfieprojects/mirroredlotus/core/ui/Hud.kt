@@ -1,6 +1,8 @@
 package dev.alfieprojects.mirroredlotus.core.ui
 
 import dev.alfieprojects.mirroredlotus.core.geo.Geo
+import dev.alfieprojects.mirroredlotus.core.perf.RenderQuality
+import dev.alfieprojects.mirroredlotus.core.perf.ThermalPolicy
 import dev.alfieprojects.mirroredlotus.core.site.Checkpoints
 import dev.alfieprojects.mirroredlotus.core.story.Acts
 import java.util.Locale
@@ -50,7 +52,11 @@ data class PerfSnapshot(
     val poseSyncedToCamera: Boolean,
     val poseLagMs: Double,
     val headingSource: String,
+    val thermal: ThermalSnapshot? = null,
 )
+
+/** Thermal status (`ThermalPolicy.STATUS_*`), forecast headroom (NaN if unknown) and the quality chosen. */
+data class ThermalSnapshot(val status: Int, val headroom: Double, val quality: RenderQuality)
 
 /**
  * The position tracker's state for the HUD. [speedMps] is the fresh GPS
@@ -111,6 +117,10 @@ object HudFormatter {
             out += "photon: ${Math.round(perf.cameraLatencyMs)}ms  pose: " +
                 (if (perf.poseSyncedToCamera) "cam-sync" else "latest") + " lag ${Math.round(perf.poseLagMs)}ms"
             out += "heading: ${perf.headingSource}"
+            perf.thermal?.let { t ->
+                val headroom = if (t.headroom.isNaN()) "—" else fmt(t.headroom, 2)
+                out += "thermal: ${ThermalPolicy.statusName(t.status)}  headroom $headroom  ${t.quality.describe}"
+            }
         }
         return out
     }

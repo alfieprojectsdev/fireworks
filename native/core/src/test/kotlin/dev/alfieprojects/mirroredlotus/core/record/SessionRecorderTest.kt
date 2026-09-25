@@ -24,7 +24,7 @@ class SessionRecorderTest {
         r.recordOrientation(1000, 0.1, 0.2, 0.3, 0.9)
         r.recordOrientation(2000, 0.5, 0.5, 0.5, 0.5) // inside the 5 s gate: dropped
         r.recordAct(3000, ActEvent.BEACON_ON, 1790.4)
-        r.recordPerf(3000, 59.94, 30.0, 55.55, 200.0, 40.0)
+        r.recordPerf(3000, 59.94, 30.0, 55.55, 200.0, 40.0, thermalStatus = 3, headroom = 0.9734, qualityLevel = 2)
         val json = JSONObject(r.exportJson("2026-09-25T00:00:00Z", "0.1.0 (1)")!!)
 
         for (key in listOf("exportedAt", "sites", "summary", "actEvents", "gpsEvents", "oriSamples")) {
@@ -52,6 +52,10 @@ class SessionRecorderTest {
         assertEquals(-10, act.getInt("deltaM"))
         assertEquals(1, json.getJSONArray("oriSamples").length())
         assertEquals(1, json.getJSONArray("perfSamples").length())
+        val perf = json.getJSONArray("perfSamples").getJSONObject(0)
+        assertEquals(3, perf.getInt("thermal"))
+        assertEquals(0.973, perf.getDouble("headroom"), 1e-9)
+        assertEquals(2, perf.getInt("quality"))
     }
 
     @Test

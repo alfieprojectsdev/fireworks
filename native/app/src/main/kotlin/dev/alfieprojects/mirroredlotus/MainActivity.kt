@@ -32,6 +32,8 @@ import dev.alfieprojects.mirroredlotus.core.fx.Rng
 import dev.alfieprojects.mirroredlotus.core.geo.Geo
 import dev.alfieprojects.mirroredlotus.core.orientation.Frames
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
+import dev.alfieprojects.mirroredlotus.core.perf.RenderPace
+import dev.alfieprojects.mirroredlotus.core.perf.ThermalPolicy
 import dev.alfieprojects.mirroredlotus.core.record.SessionRecorder
 import dev.alfieprojects.mirroredlotus.core.sim.ApproachRoute
 import dev.alfieprojects.mirroredlotus.core.site.Site
@@ -41,6 +43,8 @@ import dev.alfieprojects.mirroredlotus.core.site.TriggerPolicy
 import dev.alfieprojects.mirroredlotus.core.story.ActEvent
 import dev.alfieprojects.mirroredlotus.core.story.AnniversaryStats
 import dev.alfieprojects.mirroredlotus.core.story.ExperienceDirector
+import dev.alfieprojects.mirroredlotus.core.track.PositionTracker
+import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.core.ui.Alignment
 import dev.alfieprojects.mirroredlotus.core.ui.CompassBanner
 import dev.alfieprojects.mirroredlotus.core.ui.DistanceHint
@@ -48,9 +52,8 @@ import dev.alfieprojects.mirroredlotus.core.ui.HudFormatter
 import dev.alfieprojects.mirroredlotus.core.ui.MultiTapDetector
 import dev.alfieprojects.mirroredlotus.core.ui.PerfSnapshot
 import dev.alfieprojects.mirroredlotus.core.ui.PoseGate
+import dev.alfieprojects.mirroredlotus.core.ui.ThermalSnapshot
 import dev.alfieprojects.mirroredlotus.core.ui.TrackSnapshot
-import dev.alfieprojects.mirroredlotus.core.track.PositionTracker
-import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.export.SessionExporter
 import dev.alfieprojects.mirroredlotus.gl.ArRenderer
 import dev.alfieprojects.mirroredlotus.gl.MsaaConfigChooser
@@ -62,6 +65,7 @@ import dev.alfieprojects.mirroredlotus.location.LocationFeed
 import dev.alfieprojects.mirroredlotus.location.LocationListenerSink
 import dev.alfieprojects.mirroredlotus.location.LocationProblem
 import dev.alfieprojects.mirroredlotus.location.SimulatedLocationFeed
+import dev.alfieprojects.mirroredlotus.perf.ThermalMonitor
 import dev.alfieprojects.mirroredlotus.sensors.OrientationSource
 import dev.alfieprojects.mirroredlotus.ui.Haptics
 import java.time.Instant
@@ -93,6 +97,11 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private val testModeGate = PoseGate()
     /** GPS fused with footsteps: what the monument is anchored from after the trigger. */
     private val tracker = PositionTracker()
+    private val thermalPolicy = ThermalPolicy()
+    private lateinit var thermal: ThermalMonitor
+    /** How the render loop is driven now; read from the camera callback's thread. */
+    @Volatile private var pace = RenderPace.FULL
+    private var appliedRenderScale = 1.0
 
     private lateinit var orientation: OrientationSource
     private lateinit var locationFeed: LocationFeed
@@ -167,8 +176,11 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         glView.setEGLConfigChooser(MsaaConfigChooser())
         glView.preserveEGLContextOnPause = true
         glView.setRenderer(renderer)
-        glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         glView.holder.addCallback(frameRateHint)
+        // Camera-paced rendering draws each frame the moment it lands.
+        renderer.onCameraFrame = { if (pace == RenderPace.CAMERA) glView.requestRender() }
+        thermal = ThermalMonitor(this) { applyQuality() }
+        applyQuality() // idle until the trigger
 
         locationFeed = options.simulate?.let { site ->
             SimulatedLocationFeed(ApproachRoute(site, options.simStartM, options.simFromBearingDeg, options.simSpeedMps))
@@ -185,6 +197,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         super.onResume()
         resumed = true
         glView.onResume()
+        thermal.start()
+        applyQuality()
         orientation.start()
         audio.start()
         startLocationIfPermitted()
@@ -202,6 +216,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         locationRunning = false
         audio.stop()
         orientation.stop()
+        thermal.stop()
         glView.onPause()
         super.onPause()
     }
@@ -353,6 +368,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (experienceStarted) return
         experienceStarted = true
         testMode = test
+        applyQuality() // the render loop wakes
         activeSite = site
         Log.i(TAG, "experience start site=${site.id} test=$test")
 
@@ -538,9 +554,16 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             if (history.latest(enuScratch) != Long.MIN_VALUE) {
                 recorder.recordOrientation(now, enuScratch[1], enuScratch[2], enuScratch[3], enuScratch[0])
             }
-            perf()?.let { p ->
-                recorder.recordPerf(now, p.renderFps, p.cameraFps, p.cameraLatencyMs, p.sensorHz, p.poseLagMs)
+            if (thermal.pollHeadroom(now)) applyQuality()
+            // Camera-paced, a stalled camera would freeze the story: keep it at 10 Hz or better.
+            if (pace == RenderPace.CAMERA && System.nanoTime() - renderer.telemetry.lastDrawNanos > STALL_NANOS) {
+                glView.requestRender()
             }
+            val p = perf()
+            recorder.recordPerf(
+                now, p.renderFps, p.cameraFps, p.cameraLatencyMs, p.sensorHz, p.poseLagMs,
+                thermal.status, thermal.headroom, thermalPolicy.level,
+            )
             refreshHud(force = false)
             ui.postDelayed(this, 100)
         }
@@ -560,20 +583,61 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         compassView.animate().alpha(if (text != null) 1f else 0f).setDuration(500).start()
     }
 
-    private fun perf(): PerfSnapshot? {
+    /** Before the trigger the render loop idles, so fps reads 0 there. */
+    private fun perf(): PerfSnapshot {
         val t = renderer.telemetry
         val now = System.nanoTime()
-        val render = t.renderRate.rateHz(now)
-        if (render == 0.0) return null
         return PerfSnapshot(
-            renderFps = render,
+            renderFps = t.renderRate.rateHz(now),
             cameraFps = t.cameraRate.rateHz(now),
             cameraLatencyMs = t.cameraLatencyMs.value.takeUnless { it.isNaN() } ?: 0.0,
             sensorHz = orientation.rate.rateHz(android.os.SystemClock.elapsedRealtimeNanos()),
             poseSyncedToCamera = t.poseSynced,
             poseLagMs = t.poseLagMs.value.takeUnless { it.isNaN() } ?: 0.0,
             headingSource = "${orientation.describe}  ${t.viewDescription}",
+            thermal = ThermalSnapshot(thermal.status, thermal.headroom, thermalPolicy.quality),
         )
+    }
+
+    // ---- thermal ladder -----------------------------------------------------
+
+    /**
+     * Re-evaluates the thermal rung and applies it with the render pace (idle
+     * until the trigger). Main thread; cheap when nothing changed.
+     */
+    private fun applyQuality() {
+        if (thermalPolicy.update(thermal.status, thermal.headroom)) {
+            Log.i(
+                TAG, "quality ${thermalPolicy.quality.describe} (thermal ${ThermalPolicy.statusName(thermal.status)}, " +
+                    "headroom ${thermal.headroom})",
+            )
+        }
+        val q = thermalPolicy.quality
+        val next = thermalPolicy.pace(experienceStarted)
+        if (next != pace) {
+            pace = next
+            glView.renderMode = if (next == RenderPace.FULL) GLSurfaceView.RENDERMODE_CONTINUOUSLY else GLSurfaceView.RENDERMODE_WHEN_DIRTY
+            if (next != RenderPace.IDLE) glView.requestRender()
+            applyFrameRateHint(glView.holder)
+        }
+        applyRenderScale(if (experienceStarted) q.renderScale else 1.0)
+        val cap = q.maxLiveFireworks
+        glView.queueEvent { director.maxLiveFireworks = cap }
+    }
+
+    /** Shrinks the GL surface; the compositor scales it back up to the view. */
+    private fun applyRenderScale(scale: Double) {
+        if (scale == appliedRenderScale) return
+        val w = glView.width
+        val h = glView.height
+        if (w == 0 || h == 0) return // not laid out yet; the next applyQuality catches it
+        appliedRenderScale = scale
+        renderer.renderScale = scale.toFloat()
+        if (scale >= 1.0) {
+            glView.holder.setSizeFromLayout()
+        } else {
+            glView.holder.setFixedSize(maxOf(1, Math.round(w * scale).toInt()), maxOf(1, Math.round(h * scale).toInt()))
+        }
     }
 
     private fun alignment(): Alignment? {
@@ -621,13 +685,18 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         }
     }
 
-    /** 60 Hz is the story's tick rate; asking the A56's 120 Hz panel for 60 halves GPU and battery cost. */
+    /**
+     * 60 Hz is the story's tick rate; asking the A56's 120 Hz panel for 60
+     * halves GPU and battery cost. Camera-paced, 30 matches what is drawn.
+     */
+    private fun applyFrameRateHint(holder: SurfaceHolder) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || !holder.surface.isValid) return
+        val hz = if (pace == RenderPace.CAMERA) 30f else 60f
+        runCatching { holder.surface.setFrameRate(hz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT) }
+    }
+
     private val frameRateHint = object : SurfaceHolder.Callback {
-        override fun surfaceCreated(holder: SurfaceHolder) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                runCatching { holder.surface.setFrameRate(60f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT) }
-            }
-        }
+        override fun surfaceCreated(holder: SurfaceHolder) = applyFrameRateHint(holder)
 
         override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
         override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
@@ -646,5 +715,6 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private companion object {
         const val TAG = "Lotus"
         const val PERMISSION_REQUEST = 1
+        const val STALL_NANOS = 100_000_000L
     }
 }
