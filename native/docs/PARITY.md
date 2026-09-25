@@ -29,7 +29,7 @@ constants and formulas, ported line for line and covered by a `:core` test.
 | Personal message: arms at ≤ 100 m, appears 60 s later, fades to 0.65, spins +0.003 | `ExperienceDirector.tickMessage` | Same. |
 | Act envelopes (beacon, fireworks, marquee, stats) and lerps | `Acts`, `ExperienceDirector.tick` | Same, including the web build's marquee and stats overshoot inside 150 m and 40 m (see `Acts` KDoc). |
 | Illumination pulse from bursts within 150 m, scaled by act opacity | `FireworkSystem`, director | Same. |
-| Additive blending, depthWrite off, double-sided | `mesh.frag` / `lines.frag`, blend `ONE, ONE` | Same result. The shader reproduces WebGL's clamping of alpha × opacity. |
+| Additive blending, depthWrite off, double-sided | `mesh.frag` / `lines.frag`, blend `ONE, ONE`, `BackFaces` | Additive blending and WebGL's alpha × opacity clamping are reproduced. **Changed (Alfie's call, 25 Sep):** text no longer shows through mirrored. From outside, the crown and message cylinders draw only their near side, and pylons only their front. Once the wearer is inside a cylinder, its wall reads the right way round (back faces drawn with the texture mirrored), so walking into the crown still works. The beacon and ground ring stay double-sided. |
 | Camera fades in over 2 s, starting 1 s after the trigger | `ExperienceDirector.cameraFade` | Same timing (smoothstep instead of CSS ease-in-out). |
 | Camera FOV fixed at 60 degrees vertical | `CameraProjection.fit` | **Changed:** computed from the real lens, so the overlay stays locked while panning. |
 | Far plane 4000 m | `ArRenderer.FAR` | Same. |

@@ -18,6 +18,7 @@ import dev.alfieprojects.mirroredlotus.core.math.Mat4
 import dev.alfieprojects.mirroredlotus.core.orientation.Frames
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
 import dev.alfieprojects.mirroredlotus.core.orientation.PoseSampler
+import dev.alfieprojects.mirroredlotus.core.render.BackFaces
 import dev.alfieprojects.mirroredlotus.core.render.Meshes
 import dev.alfieprojects.mirroredlotus.core.render.MonumentPlacement
 import dev.alfieprojects.mirroredlotus.core.render.SceneLayout
@@ -365,7 +366,7 @@ class ArRenderer(
         if (statsOpacity > MIN_OPACITY && pylonTex[0] != 0) {
             for (i in 0 until 4) {
                 MonumentPlacement.pylon(model, i, gx, gy, gz, pylonWidth[i])
-                drawTextured(p, plane, pylonTex[i], statsOpacity)
+                drawTextured(p, plane, pylonTex[i], statsOpacity, BackFaces.FOR_PANEL_TEXT)
             }
         }
 
@@ -373,13 +374,15 @@ class ArRenderer(
         val marqueeOpacity = director.marqueeOpacity.toFloat()
         if (marqueeOpacity > MIN_OPACITY && marqueeTex != 0) {
             MonumentPlacement.crown(model, gx, gy, gz, director.marqueeRotation.toFloat())
-            drawTextured(p, crown, marqueeTex, marqueeOpacity)
+            val facing = BackFaces.forCylinderText(director.groupX, director.groupZ, SceneLayout.CROWN_RADIUS)
+            drawTextured(p, crown, marqueeTex, marqueeOpacity, facing)
         }
 
         // The personal message, a minute after arriving.
         if (director.messageVisible && messageTex != 0) {
             MonumentPlacement.message(model, gx, gy, gz, director.messageRotation.toFloat())
-            drawTextured(p, messageMesh, messageTex, director.messageOpacity.toFloat())
+            val facing = BackFaces.forCylinderText(director.groupX, director.groupZ, SceneLayout.MESSAGE_RADIUS)
+            drawTextured(p, messageMesh, messageTex, director.messageOpacity.toFloat(), facing)
         }
     }
 
@@ -388,16 +391,18 @@ class ArRenderer(
         Mat4.multiply(mvp, viewProj, model)
         GLES30.glUniformMatrix4fv(p.u("uMvp"), 1, false, mvp, 0)
         GLES30.glUniform1i(p.u("uTextured"), 0)
+        GLES30.glUniform1i(p.u("uBackFaces"), BackFaces.SHOW) // pillar and ring glow from both sides
         GLES30.glUniform3f(p.u("uColor"), colour[0], colour[1], colour[2])
         GLES30.glUniform1f(p.u("uOpacity"), opacity)
         mesh.draw()
     }
 
-    private fun drawTextured(p: GlProgram, mesh: GlMesh?, texture: Int, opacity: Float) {
+    private fun drawTextured(p: GlProgram, mesh: GlMesh?, texture: Int, opacity: Float, backFaces: Int) {
         mesh ?: return
         Mat4.multiply(mvp, viewProj, model)
         GLES30.glUniformMatrix4fv(p.u("uMvp"), 1, false, mvp, 0)
         GLES30.glUniform1i(p.u("uTextured"), 1)
+        GLES30.glUniform1i(p.u("uBackFaces"), backFaces)
         GLES30.glUniform1f(p.u("uOpacity"), opacity)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, texture)
         mesh.draw()

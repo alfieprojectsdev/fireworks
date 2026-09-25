@@ -8,7 +8,7 @@ package dev.alfieprojects.mirroredlotus.core.render
 object ShaderSources {
     enum class Program(val vertex: String, val fragment: String, val uniforms: List<String>) {
         CAMERA("shaders/camera.vert", "shaders/camera.frag", listOf("uTexMatrix", "uCrop", "uTex", "uBrightness")),
-        MESH("shaders/mesh.vert", "shaders/mesh.frag", listOf("uMvp", "uTex", "uTextured", "uColor", "uOpacity")),
+        MESH("shaders/mesh.vert", "shaders/mesh.frag", listOf("uMvp", "uTex", "uTextured", "uColor", "uOpacity", "uBackFaces")),
         LINES("shaders/lines.vert", "shaders/lines.frag", listOf("uViewProj")),
     }
 

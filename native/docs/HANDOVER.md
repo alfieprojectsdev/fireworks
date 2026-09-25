@@ -7,7 +7,7 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 138 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 142 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
 | `DeviceSmokeTest` on the A07 | Shaders, sensor rate and camera **pass**. Audio budget failed on the debuggable build; now measured warm on the field build (re-run pending) |
@@ -44,7 +44,7 @@ when it opens the `native/` folder. Otherwise, create it with
 
 ```powershell
 cd fireworks\native
-.\gradlew.bat :core:test          # 138 tests, ~10 s
+.\gradlew.bat :core:test          # 142 tests, ~10 s
 .\gradlew.bat :app:assembleField
 ```
 
@@ -123,13 +123,15 @@ warm long before the first burst. The smoke test now logs the cold second and
 judges a warm one on the field build. Compressor idle work and the noise
 generator were also made cheaper. Re-run it to get the warm A07 figure.
 
-**Open question: mirrored glyphs.** In a test-mode screenshot, the crown and
-one pylon showed mirrored text. That is most likely the far side seen through
-the geometry: every material is double-sided and additive with no depth test,
-exactly as in the web build, so the back of the crown and a pylon facing away
-read backwards. Compare against the web build side by side. If the native build
-matches, fading back faces (via `gl_FrontFacing` in `mesh.frag`) is a small
-change, but it's a design decision.
+**Mirrored glyphs: decided.** A test-mode screenshot showed the crown's far
+side and a pylon's back reading mirrored, because every material is double-sided
+additive with no depth test (as in the web build). Alfie chose to show only the
+side facing the viewer. From outside, back faces of text are now discarded. From
+inside a text cylinder (standing within the crown's 35 m, or the message's
+12 m), its wall draws mirrored so it reads correctly; otherwise walking in would
+make the crown vanish. `BackFacesTest` pins the winding this relies on. **On the
+phone:** in test mode, circle a pylon (no mirrored text from any side), then
+confirm the crown still reads from inside it with `--es simulate church`.
 
 ## What to look at first on the phone, and what to try if it's wrong
 
