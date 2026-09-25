@@ -12,6 +12,8 @@ import dev.alfieprojects.mirroredlotus.core.orientation.Frames
 import dev.alfieprojects.mirroredlotus.core.orientation.HeadingFusion
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
 import dev.alfieprojects.mirroredlotus.core.telemetry.RateMeter
+import dev.alfieprojects.mirroredlotus.core.track.StepDetector
+import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.core.ui.HeadingQuality
 
 /**
@@ -34,6 +36,21 @@ class OrientationSource(
     private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val game: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
     private val absolute: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
+    private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+    // Pedestrian dead reckoning: footsteps from the accelerometer, each one
+    // pointed along the fused (gyro-locked, north-anchored) facing.
+    private val steps = StepDetector()
+    private val facing = DoubleArray(2)
+    private val latestEnu = doubleArrayOf(1.0, 0.0, 0.0, 0.0)
+
+    /**
+     * Called on the sensor thread for every detected footstep, with the unit
+     * walking direction (east, north). The listener must hand off to its own
+     * thread quickly.
+     */
+    @Volatile
+    var onStep: ((east: Double, north: Double) -> Unit)? = null
 
     private val fusion = HeadingFusion(headingTauSeconds)
     private val rawQ = DoubleArray(4)
@@ -105,6 +122,9 @@ class OrientationSource(
         absolute?.let {
             sensorManager.registerListener(this, it, if (game != null) SensorManager.SENSOR_DELAY_GAME else 5_000, h)
         }
+        // Footsteps are a ~2 Hz bounce; 50 Hz resolves them comfortably.
+        steps.reset()
+        accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME, h) }
     }
 
     fun stop() {
@@ -114,6 +134,13 @@ class OrientationSource(
     }
 
     override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            val v = event.values
+            if (steps.onSample(event.timestamp, v[0].toDouble(), v[1].toDouble(), v[2].toDouble()) &&
+                WalkHeading.of(latestEnu, facing)
+            ) onStep?.invoke(facing[0], facing[1])
+            return
+        }
         Frames.rotationVectorToQuat(event.values, event.values.size, rawQ)
         val now = System.currentTimeMillis()
         lastAnyAtMs = now
@@ -127,6 +154,7 @@ class OrientationSource(
             else -> false
         }
         if (publish) {
+            latestEnu[0] = outQ[0]; latestEnu[1] = outQ[1]; latestEnu[2] = outQ[2]; latestEnu[3] = outQ[3]
             history.push(event.timestamp, outQ)
             rate.record(event.timestamp)
             // The first sample published after the compass correction exists

@@ -52,6 +52,9 @@ data class PerfSnapshot(
     val headingSource: String,
 )
 
+/** The position tracker's state for the HUD. */
+data class TrackSnapshot(val sigmaM: Double, val steps: Long, val rejectedFixes: Long, val fusedDistanceM: Double?)
+
 /**
  * The debug HUD's lines (`_buildHUD` in sensors.js), as plain text. The
  * export control is a separate view, so rebuilding these never swallows a tap.
@@ -67,6 +70,7 @@ object HudFormatter {
         siteId: String?,
         alignment: Alignment?,
         perf: PerfSnapshot?,
+        track: TrackSnapshot? = null,
     ): List<String> {
         val acc = accuracyM?.roundToLong()?.toString() ?: "?"
         val siteRef = if (siteId == "church") {
@@ -88,6 +92,10 @@ object HudFormatter {
             "stage: ${Acts.stageLabel(distanceM)}",
             "cam: $cam  AR: $ar  Δ: $d",
         )
+        if (track != null) {
+            val fused = track.fusedDistanceM?.let { "fused ${Math.round(it)}m " } ?: ""
+            out += "track: $fused±${Math.round(track.sigmaM)}m  steps ${track.steps}  gps-rej ${track.rejectedFixes}"
+        }
         if (perf != null) {
             out += "fps: ${fmt1(perf.renderFps)}  cam: ${fmt1(perf.cameraFps)}  sensor: ${Math.round(perf.sensorHz)}Hz"
             out += "photon: ${Math.round(perf.cameraLatencyMs)}ms  pose: " +

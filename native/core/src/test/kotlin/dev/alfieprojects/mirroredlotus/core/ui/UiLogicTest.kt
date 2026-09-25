@@ -147,4 +147,13 @@ class UiLogicTest {
         assertFalse(g.poll(2999, headingReady = false))
         assertTrue(g.poll(3000, headingReady = false))
     }
+
+    @Test
+    fun `hud adds the tracking line when tracking is known`() {
+        val lines = HudFormatter.lines(
+            "fused", 30.0, 0.0, 0.0, 12.0, 0.0, "church", null, null,
+            TrackSnapshot(sigmaM = 4.4, steps = 37, rejectedFixes = 2, fusedDistanceM = 9.6),
+        )
+        assertEquals("track: fused 10m ±4m  steps 37  gps-rej 2", lines[6])
+    }
 }

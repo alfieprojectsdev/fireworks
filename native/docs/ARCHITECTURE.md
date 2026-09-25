@@ -135,6 +135,32 @@ burst's position relative to the current phone orientation, plus a head-shadow
 low-pass on the far ear. Earphone mode adds a small Freeverb in place of the
 2 s convolver.
 
+### 7. Position when GPS goes bad: GPS + footsteps
+
+Rotation never needs GPS: the gyro locks it at 200 Hz and the compass only
+steers north. Position does. The camera never translates, so the monument is
+re-placed from the wearer's position, and at or inside the church GPS fixes
+thin out and wander 20-50 m.
+
+`PositionTracker` is a small Kalman filter on a local east/north plane:
+
+- `StepDetector` finds footsteps in the accelerometer's bounce (magnitude minus
+  gravity, low-passed, with hysteresis).
+- `WalkHeading` points each step along the fused heading.
+- Each fix is weighted by its reported accuracy. Jumps far outside the combined
+  uncertainty are rejected, until several in a row agree.
+- Uncertainty also grows slowly with time, so missed steps can't strand the
+  estimate.
+
+Standing still indoors, the monument holds; walking, it moves by your strides;
+good GPS pulls it back. A true INS (integrating acceleration twice) is not an
+option on phone sensors: it drifts tens of metres a minute, and gearsync
+rejected it for the same reason. Pedestrian dead reckoning drifts a few percent
+of the distance walked.
+
+The pre-trigger decision still uses raw fixes: at that range a few metres don't
+matter.
+
 ## Threads and ownership
 
 | Thread | Owns | Talks to others via |

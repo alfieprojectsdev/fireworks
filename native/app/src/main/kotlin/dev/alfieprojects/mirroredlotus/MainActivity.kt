@@ -48,6 +48,9 @@ import dev.alfieprojects.mirroredlotus.core.ui.HudFormatter
 import dev.alfieprojects.mirroredlotus.core.ui.MultiTapDetector
 import dev.alfieprojects.mirroredlotus.core.ui.PerfSnapshot
 import dev.alfieprojects.mirroredlotus.core.ui.PoseGate
+import dev.alfieprojects.mirroredlotus.core.ui.TrackSnapshot
+import dev.alfieprojects.mirroredlotus.core.track.PositionTracker
+import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.export.SessionExporter
 import dev.alfieprojects.mirroredlotus.gl.ArRenderer
 import dev.alfieprojects.mirroredlotus.gl.MsaaConfigChooser
@@ -87,6 +90,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private val secretTaps = MultiTapDetector()
     private val hudTaps = MultiTapDetector()
     private val testModeGate = PoseGate()
+    /** GPS fused with footsteps: what the monument is anchored from after the trigger. */
+    private val tracker = PositionTracker()
 
     private lateinit var orientation: OrientationSource
     private lateinit var locationFeed: LocationFeed
@@ -119,8 +124,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private var shownBanner: CompassBanner.State? = null
     private var lastHudAt = 0L
     private val enuScratch = DoubleArray(4)
-    private val sceneScratch = DoubleArray(4)
-    private val fwdScratch = DoubleArray(3)
+    private val facingScratch = DoubleArray(2)
 
     private class Fix(val lat: Double, val lng: Double, val accuracy: Double?, val source: String)
 
@@ -137,6 +141,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
         haptics = Haptics(this)
         orientation = OrientationSource(this, history, options.headingTauS)
+        orientation.onStep = { east, north -> ui.post { onStep(east, north) } }
         cameraFeed = CameraFeed(this)
 
         val listenerScratch = DoubleArray(4)
@@ -255,6 +260,10 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     override fun onFix(lat: Double, lng: Double, accuracyM: Double?, source: String) {
         lastFix = Fix(lat, lng, accuracyM, source)
+        val fused = tracker.onFix(lat, lng, accuracyM, System.currentTimeMillis())
+        if (fused == PositionTracker.FixResult.REJECTED_JUMP || fused == PositionTracker.FixResult.RESET) {
+            Log.i(TAG, "tracker: $fused (fix ±${accuracyM?.let { Math.round(it) } ?: "?"} m)")
+        }
         val alignment = alignment()
         if (!experienceStarted) {
             val decision = TriggerPolicy.evaluate(lat, lng)
@@ -269,10 +278,25 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             val distance = Geo.distanceM(lat, lng, site.lat, site.lng)
             val bearing = Geo.bearingDeg(lat, lng, site.lat, site.lng)
             recorder.recordGps(System.currentTimeMillis(), lat, lng, accuracyM, source, distance, bearing, alignment, site.id)
-            // Test mode freezes staging at "arrived"; real GPS still logs.
-            if (!testMode) glView.queueEvent { director.onLocation(lat, lng) }
+            // Test mode freezes staging at "arrived"; real GPS still logs. The
+            // monument follows the fused estimate, not the raw fix, so indoor
+            // GPS wander can't drag it around.
+            anchorToTracker()
         }
         refreshHud(force = true)
+    }
+
+    /** A footstep (main thread): dead-reckon, and move the monument with the wearer. */
+    private fun onStep(east: Double, north: Double) {
+        tracker.onStep(east, north, System.currentTimeMillis())
+        if (experienceStarted) anchorToTracker()
+    }
+
+    private fun anchorToTracker() {
+        if (testMode || !tracker.initialised) return
+        val lat = tracker.lat
+        val lng = tracker.lng
+        glView.queueEvent { director.onLocation(lat, lng) }
     }
 
     override fun onProblem(problem: LocationProblem) {
@@ -315,10 +339,11 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     /** Camera forward (scene axes, x and z) from the newest orientation; north when there is none. */
     private fun currentForward(): Pair<Double, Double> {
-        if (history.latest(enuScratch) == Long.MIN_VALUE) return 0.0 to -1.0
-        Frames.enuToScene(enuScratch, sceneScratch)
-        Frames.forward(sceneScratch, fwdScratch)
-        return fwdScratch[0] to fwdScratch[2]
+        // WalkHeading, not the raw camera axis: test mode is usually launched
+        // with the phone face-up on a desk, where the camera's horizontal
+        // component is a couple of degrees of tilt pointing anywhere.
+        if (history.latest(enuScratch) == Long.MIN_VALUE || !WalkHeading.of(enuScratch, facingScratch)) return 0.0 to -1.0
+        return facingScratch[0] to -facingScratch[1] // scene: x = east, z = south
     }
 
     private fun startExperience(site: Site, lat: Double, lng: Double, test: Boolean) {
@@ -563,9 +588,17 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         val site = activeSite ?: TriggerPolicy.evaluate(fix.lat, fix.lng).nearest.site
         val distance = Geo.distanceM(fix.lat, fix.lng, site.lat, site.lng)
         val bearing = Geo.bearingDeg(fix.lat, fix.lng, site.lat, site.lng)
+        val track = if (tracker.initialised) {
+            TrackSnapshot(
+                sigmaM = tracker.sigmaM,
+                steps = tracker.stepCount,
+                rejectedFixes = tracker.rejectedFixes,
+                fusedDistanceM = activeSite?.let { Geo.distanceM(tracker.lat, tracker.lng, it.lat, it.lng) },
+            )
+        } else null
         hudLines.text = HudFormatter.lines(
             fix.source, fix.accuracy, fix.lat, fix.lng, if (testMode) 0.0 else distance, bearing,
-            site.id, alignment(), perf(),
+            site.id, alignment(), perf(), track,
         ).joinToString("\n")
     }
 

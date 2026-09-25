@@ -7,12 +7,12 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 142 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 155 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
 | `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build: three runs on `4e59787` and one on `fbc7c77`, which includes the back-face shader (`gl_FrontFacing`, `discard`, `uBackFaces`), compiled and linked on the Mali-G57 with `GL_NO_ERROR` |
 | On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
-| Still to do | Pan swim test, heading check, walk-in, back-face check on the phone, side-by-side with the web build, the A56 |
+| Still to do | Pan swim test, heading check, walk-in (including inside the church, watching the HUD `track:` line), back-face check on the phone, side-by-side with the web build, the A56 |
 
 ## Always install the `field` build
 
@@ -44,7 +44,7 @@ when it opens the `native/` folder. Otherwise, create it with
 
 ```powershell
 cd fireworks\native
-.\gradlew.bat :core:test          # 142 tests, ~10 s
+.\gradlew.bat :core:test          # 155 tests, ~10 s
 .\gradlew.bat :app:assembleField
 ```
 
@@ -138,6 +138,21 @@ inside a text cylinder (standing within the crown's 35 m, or the message's
 make the crown vanish. `BackFacesTest` pins the winding this relies on. **On the
 phone:** in test mode, circle a pylon (no mirrored text from any side), then
 confirm the crown still reads from inside it with `--es simulate church`.
+
+**Test mode from a face-up phone: fixed.** Alfie's first session export showed
+a desk launch placing the monument along the 2 degree tilt of a phone lying
+face-up, which is a random bearing. Placement (and each dead-reckoned step) now
+uses `WalkHeading`. When the camera is within about 60 degrees of vertical, it
+takes the screen's top edge: forward for a face-up phone, reversed for one
+tilted up at the sky.
+
+**Indoor position.** From the trigger on, the monument is anchored from
+`PositionTracker` (GPS fused with footsteps), not raw fixes. The HUD's `track:`
+line shows the fused distance, its uncertainty, the step count and rejected
+fixes. Inside the church, with the phone held still, the monument should not
+drift even though raw GPS wanders. Walking, it should move by your strides.
+Stride is fixed at 0.7 m. If walk-ins consistently over- or undershoot, that's
+the constant to tune (`PositionTracker(strideM)`).
 
 ## What to look at first on the phone, and what to try if it's wrong
 
