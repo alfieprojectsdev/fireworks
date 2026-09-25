@@ -8,6 +8,13 @@ import {
 } from './scene.js';
 import { initRecorder, recordGPS, recordOrientation } from './session-recorder.js';
 
+// Android's rotation vector maps device axes into an east-north-up world; the
+// scene is east-up-south (north is -Z). Rotating -90 degrees about X converts
+// one to the other: it is the same factor DeviceOrientationControls applies
+// internally, and without it the camera looked at the zenith whenever the phone
+// was held upright. Module-level so the 50 Hz handler allocates nothing.
+const _enuToScene = new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2);
+
 let _webGeoIntervalId      = null;
 let _webGeoIntervalStarted = false;
 let _isTestMode            = false;
@@ -158,8 +165,8 @@ export function bootstrapSensors() {
 
         SensorBridge.addListener('onNativeOrientationUpdate', (data) => {
             setNativeOrientationActive();
-            getCamera().quaternion.set(data.x, data.y, data.z, data.w);
-            recordOrientation(data.x, data.y, data.z, data.w);
+            getCamera().quaternion.set(data.x, data.y, data.z, data.w).premultiply(_enuToScene);
+            recordOrientation(data.x, data.y, data.z, data.w);   // raw ENU, as before
         });
 
         SensorBridge.addListener('onNativeLocationUpdate', (data) => {
