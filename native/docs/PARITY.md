@@ -38,7 +38,7 @@ constants and formulas, ported line for line and covered by a `:core` test.
 
 | Web | Native | Notes |
 |---|---|---|
-| Spawner: p 0.1, or p 0.02 for a pair; cap 15 | director | Same. |
+| Spawner: p 0.1, or p 0.02 for a pair; cap 15 | director | Same while the phone is cool. **Changed:** the thermal ladder (`ThermalPolicy`) lowers the cap to 9, 6 or 4 as the phone heats. The web build had no such control and throttled instead. |
 | Rocket physics, wind (0.015, 0, -0.005), burst when vy ≤ 1 | `FireworkSystem` | Same, including the order of operations. |
 | Six shells, weights 10/8/8 % and 74 % split three ways, counts, colours, curves | `FireworkSystem` | Same formulas (heart, lemniscate, Lissajous 3:2). |
 | Streak lengths, gravity, drag, lifespans, opacity flicker | same | Same. |

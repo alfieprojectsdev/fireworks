@@ -4,6 +4,7 @@ import android.Manifest
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.SurfaceTexture
@@ -12,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -28,6 +30,9 @@ import dev.alfieprojects.mirroredlotus.audio.EarphoneDetector
 import dev.alfieprojects.mirroredlotus.camera.CameraFeed
 import dev.alfieprojects.mirroredlotus.core.audio.ListenerPose
 import dev.alfieprojects.mirroredlotus.core.audio.SpatialMixer
+import dev.alfieprojects.mirroredlotus.core.fieldtest.FieldSample
+import dev.alfieprojects.mirroredlotus.core.fieldtest.FieldTestLog
+import dev.alfieprojects.mirroredlotus.core.fieldtest.FieldTests
 import dev.alfieprojects.mirroredlotus.core.fx.Rng
 import dev.alfieprojects.mirroredlotus.core.geo.Geo
 import dev.alfieprojects.mirroredlotus.core.orientation.Frames
@@ -55,6 +60,7 @@ import dev.alfieprojects.mirroredlotus.core.ui.PoseGate
 import dev.alfieprojects.mirroredlotus.core.ui.ThermalSnapshot
 import dev.alfieprojects.mirroredlotus.core.ui.TrackSnapshot
 import dev.alfieprojects.mirroredlotus.export.SessionExporter
+import dev.alfieprojects.mirroredlotus.fieldtest.FieldTestController
 import dev.alfieprojects.mirroredlotus.gl.ArRenderer
 import dev.alfieprojects.mirroredlotus.gl.MsaaConfigChooser
 import dev.alfieprojects.mirroredlotus.gl.SceneTextures
@@ -71,6 +77,7 @@ import dev.alfieprojects.mirroredlotus.ui.Haptics
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.util.Locale
 
 /**
  * The one screen. Owns the pipeline's threads and wires them together:
@@ -135,6 +142,12 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private var lastHudAt = 0L
     private val enuScratch = DoubleArray(4)
     private val facingScratch = DoubleArray(2)
+    private val sceneScratch = DoubleArray(4)
+    private val forwardScratch = DoubleArray(3)
+
+    private lateinit var fieldTests: FieldTestController
+    /** A field test asked for at launch (`--es fieldTest`), started on the first UI tick. */
+    private var pendingFieldTest: String? = null
 
     // ---- lifecycle ----------------------------------------------------------
 
@@ -148,6 +161,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         bindViews()
 
         haptics = Haptics(this)
+        fieldTests = FieldTestController(this, haptics, fieldTestHost)
+        pendingFieldTest = options.fieldTest
         orientation = OrientationSource(this, history, options.headingTauS)
         orientation.onStep = { east, north -> ui.post { onStep(east, north) } }
         cameraFeed = CameraFeed(this)
@@ -204,12 +219,14 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         startLocationIfPermitted()
         if (experienceStarted) openCameraIfReady()
         ui.post(uiTick)
+        fieldTests.onResume()
         goImmersive()
     }
 
     override fun onPause() {
         resumed = false
         ui.removeCallbacks(uiTick)
+        fieldTests.onPause()
         cameraFeed.close()
         renderer.setCameraConfig(null)
         locationFeed.stop()
@@ -222,6 +239,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     override fun onDestroy() {
+        fieldTests.close()
         cameraFeed.release()
         earphones.unregister()
         super.onDestroy()
@@ -282,6 +300,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (fused == PositionTracker.FixResult.REJECTED_JUMP || fused == PositionTracker.FixResult.RESET) {
             Log.i(TAG, "tracker: $fused (fix ±${accuracyM?.let { Math.round(it) } ?: "?"} m)")
         }
+        fieldTests.onFix(SystemClock.elapsedRealtime(), fix, fused.name, trackForLog())
         val alignment = alignment()
         if (!experienceStarted) {
             val decision = TriggerPolicy.evaluate(lat, lng)
@@ -308,6 +327,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private fun onStep(east: Double, north: Double) {
         tracker.onStep(east, north, System.currentTimeMillis())
         if (experienceStarted) anchorToTracker()
+        fieldTests.onStep(SystemClock.elapsedRealtime(), east, north, orientation.detectedSteps, trackForLog())
     }
 
     private fun anchorToTracker() {
@@ -471,8 +491,12 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         hud = findViewById(R.id.debug_hud)
         hudLines = findViewById(R.id.hud_lines)
 
-        findViewById<TextView>(R.id.build_version).text =
-            getString(R.string.build_version, BuildConfig.VERSION_CODE, BuildConfig.BUILD_STAMP)
+        findViewById<TextView>(R.id.build_version).apply {
+            text = getString(R.string.build_version, BuildConfig.VERSION_CODE, BuildConfig.BUILD_STAMP)
+            // The field-test menu: human taps work on the A07, only adb's are blocked.
+            setOnLongClickListener { showFieldTestMenu(); true }
+        }
+        hudLines.setOnLongClickListener { showFieldTestMenu(); true }
 
         arrowFloat = ObjectAnimator.ofFloat(
             findViewById(R.id.splash_arrow), View.TRANSLATION_Y, 0f,
@@ -564,6 +588,11 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 now, p.renderFps, p.cameraFps, p.cameraLatencyMs, p.sensorHz, p.poseLagMs,
                 thermal.status, thermal.headroom, thermalPolicy.level,
             )
+            pendingFieldTest?.let { id ->
+                pendingFieldTest = null
+                startFieldTest(id, p)
+            }
+            if (fieldTests.running) fieldTests.onTick(fieldSample(p), p, thermalPolicy.level)
             refreshHud(force = false)
             ui.postDelayed(this, 100)
         }
@@ -607,10 +636,10 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
      */
     private fun applyQuality() {
         if (thermalPolicy.update(thermal.status, thermal.headroom)) {
-            Log.i(
-                TAG, "quality ${thermalPolicy.quality.describe} (thermal ${ThermalPolicy.statusName(thermal.status)}, " +
-                    "headroom ${thermal.headroom})",
-            )
+            val note = "quality ${thermalPolicy.quality.describe} (thermal ${ThermalPolicy.statusName(thermal.status)}, " +
+                "headroom ${thermal.headroom})"
+            Log.i(TAG, note)
+            if (::fieldTests.isInitialized) fieldTests.note(SystemClock.elapsedRealtime(), note)
         }
         val q = thermalPolicy.quality
         val next = thermalPolicy.pace(experienceStarted)
@@ -640,10 +669,114 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         }
     }
 
+    /**
+     * Camera heading from the newest orientation (the render loop idles before
+     * the trigger, so its telemetry can be stale), monument from the renderer.
+     */
     private fun alignment(): Alignment? {
+        if (history.latest(enuScratch) == Long.MIN_VALUE) return null
+        Frames.enuToScene(enuScratch, sceneScratch)
+        Frames.forward(sceneScratch, forwardScratch)
+        val fx = forwardScratch[0]
+        val fz = forwardScratch[2]
         val t = renderer.telemetry
-        if (!t.hasPose) return null
-        return if (t.groupPlaced) Alignment.of(t.fwdX, t.fwdZ, t.groupX, t.groupZ) else Alignment.of(t.fwdX, t.fwdZ, null, null)
+        return if (t.groupPlaced) Alignment.of(fx, fz, t.groupX, t.groupZ) else Alignment.of(fx, fz, null, null)
+    }
+
+    // ---- field tests --------------------------------------------------------
+
+    private val fieldTestHost = object : FieldTestController.Host {
+        /**
+         * The whole show, every act lit. A session already triggered by GPS
+         * (the origin site triggers at home) is switched to test staging, or
+         * its fireworks would stay dark beyond 800 m.
+         */
+        override fun startShow() {
+            if (!experienceStarted) startTestMode() else if (!testMode) placeAhead()
+        }
+
+        override fun placeAhead() {
+            if (!experienceStarted) {
+                startTestMode()
+                return
+            }
+            val site = activeSite ?: return
+            testMode = true // GPS no longer re-anchors it
+            val (fx, fz) = currentForward()
+            glView.queueEvent { director.placeAhead(site, fx, fz) }
+        }
+
+        override fun setSyncCamera(on: Boolean) {
+            renderer.syncToCamera = on
+        }
+
+        override fun restoreSyncCamera() {
+            renderer.syncToCamera = options.syncCamera
+        }
+    }
+
+    private fun showFieldTestMenu() {
+        if (fieldTests.running) {
+            Toast.makeText(this, R.string.field_busy, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val scripts = FieldTests.all(SystemClock.elapsedRealtime())
+        val items = scripts.map { "${it.id.uppercase(Locale.US)}  ${it.title}\n${it.summary}" }.toTypedArray()
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.field_menu_title)
+            .setItems(items) { _, which -> startFieldTest(scripts[which].id, perf()) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun startFieldTest(id: String, p: PerfSnapshot) {
+        if (fieldTests.running) return
+        val seed = SystemClock.elapsedRealtime()
+        val script = FieldTests.byId(id, seed) ?: run {
+            Toast.makeText(this, getString(R.string.field_unknown, id), Toast.LENGTH_LONG).show()
+            return
+        }
+        val extras = mapOf(
+            "seed" to seed.toString(),
+            "buildStamp" to BuildConfig.BUILD_STAMP,
+            "syncCamera" to options.syncCamera.toString(),
+            "headingTau" to options.headingTauS.toString(),
+            "experienceStarted" to experienceStarted.toString(),
+            "testMode" to testMode.toString(),
+            "site" to (activeSite?.id ?: "none"),
+            "simulate" to (options.simulate?.id ?: "none"),
+        )
+        fieldTests.start(script, fieldSample(p), extras)
+    }
+
+    private fun fieldSample(p: PerfSnapshot): FieldSample {
+        val q = if (history.latest(enuScratch) != Long.MIN_VALUE) enuScratch.copyOf() else null
+        val a = alignment()
+        val tracked = tracker.initialised
+        return FieldSample(
+            tMs = SystemClock.elapsedRealtime(),
+            quat = q,
+            steps = orientation.detectedSteps,
+            fusedLat = if (tracked) tracker.lat else null,
+            fusedLng = if (tracked) tracker.lng else null,
+            sigmaM = if (tracked) tracker.sigmaM else null,
+            deltaDeg = a?.deltaDeg,
+            renderFps = p.renderFps,
+            cameraFps = p.cameraFps,
+            photonMs = p.cameraLatencyMs,
+            thermalStatus = thermal.status,
+            headroom = thermal.headroom,
+            compassHeadingDeg = orientation.compassHeadingDeg.takeUnless { it.isNaN() },
+            yawCorrectionDeg = orientation.yawCorrectionDeg.takeUnless { it.isNaN() },
+        )
+    }
+
+    private fun trackForLog(): FieldTestLog.Track? {
+        if (!tracker.initialised) return null
+        return FieldTestLog.Track(
+            tracker.lat, tracker.lng, tracker.sigmaM, tracker.stepCount, tracker.rejectedFixes,
+            tracker.speedMps(System.currentTimeMillis()),
+        )
     }
 
     private fun refreshHud(force: Boolean) {
@@ -710,6 +843,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (intent.getBooleanExtra("testMode", false)) startTestMode()
         if (intent.getBooleanExtra("hud", false)) hud.visibility = View.VISIBLE
         if (intent.hasExtra("syncCamera")) renderer.syncToCamera = intent.getBooleanExtra("syncCamera", true)
+        intent.getStringExtra("fieldTest")?.let { pendingFieldTest = it }
     }
 
     private companion object {

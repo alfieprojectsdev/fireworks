@@ -7,12 +7,13 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 163 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP, tracking, thermal ladder, field tests) | **Done, 184 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
 | `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build: three runs on `4e59787` and one on `fbc7c77`, which includes the back-face shader (`gl_FrontFacing`, `discard`, `uBackFaces`), compiled and linked on the Mali-G57 with `GL_NO_ERROR` |
 | On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
-| Still to do | Pan swim test, heading check, walk-in (including inside the church, watching the HUD `track:` line), back-face check on the phone, side-by-side with the web build, the A56 |
+| Next on the A07 | Install the new build, run `connectedFieldAndroidTest` (now 5 tests, incl. the field-log writer), then the on-phone field tests: T2, T5 and T1 first (see "Field tests on the phone") |
+| Still to do | Heading check, walk-in (including inside the church, watching the HUD `track:` line), back-face check on the phone, side-by-side with the web build, the A56 |
 
 ## Always install the `field` build
 
@@ -44,7 +45,7 @@ when it opens the `native/` folder. Otherwise, create it with
 
 ```powershell
 cd fireworks\native
-.\gradlew.bat :core:test          # 163 tests, ~10 s
+.\gradlew.bat :core:test          # 184 tests, ~10 s
 .\gradlew.bat :app:assembleField
 ```
 
@@ -171,6 +172,44 @@ Stride is fixed at 0.7 m. If indoor walks consistently over- or undershoot,
 that's the constant to tune (`PositionTracker(strideM)`). A step goes where the
 camera faces, not where your feet go: walking in while filming off to one side
 dead-reckons sideways. Keep the camera roughly ahead while walking indoors.
+
+**Thermal throttling: a ladder, measured next.** fireworks-local's A07 run
+reached thermal status SEVERE (skin 51 °C) after 25 minutes of handling in
+Manila daytime: 34 fps and a 289 ms photon age, against 60 fps and 62 ms cool.
+The walk-in from the 1.8 km trigger is 20+ minutes, so `ThermalPolicy` now
+gives ground first. At MODERATE (or a 10 s forecast headroom of 0.85) it
+renders once per camera frame and caps fireworks at 9. At SEVERE it also
+renders at 75% size with 6 fireworks, and at CRITICAL 50% with 4. Camera-paced
+rendering costs nothing in lock, since the pose is synced to the frame anyway.
+Before the trigger the render loop now idles behind the splash. The HUD has a
+`thermal:` line, and every perfSample and field-test perf line records status,
+headroom and rung. **T5** measures the result.
+
+## Field tests on the phone
+
+Alfie can run these alone, indoors, with no laptop: long-press the build
+label under the splash (or the HUD text) and pick one, or
+`adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity --es fieldTest t2`.
+The README lists all six. Each run writes
+`Download/LotusTests/<yyyyMMdd-HHmmss>_<id>.json`, one JSON object per line.
+Every line has `type` and `t` (ms since the run started):
+
+| `type` | Carries |
+|---|---|
+| `run` | test id, app version, variant, device, launch options, the phase list |
+| `phase` | each phase start, its text and actions (`placeAhead`, `startShow`, `syncCamera:on/off`) |
+| `ori` | 10 Hz: device-to-ENU quaternion `q` `[w,x,y,z]`, walking `heading`, `rate` (rad/s), raw `compass` heading, fusion `correction` |
+| `step` | every credited footstep, with the tracker's state |
+| `fix` | every GPS fix (incl. Doppler speed/bearing), the tracker's verdict (`FUSED`, `REJECTED_JUMP`...) and state |
+| `perf` | 1 Hz: fps, camFps, photonMs, poseLagMs, sensorHz, thermal, headroom, quality |
+| `input`, `note` | taps, choices, aborts, pauses, thermal-ladder changes |
+| `result` | every check with value, threshold and PASS/FAIL/info |
+
+The order that answers the open questions: **T2** (phantom steps; the 70
+"steps" in the last run were on the old detector, before the cadence and swing
+gates), **T5** (thermal, with the ladder), **T1** (face-up placement, with
+numbers). Then T3 and T4. T4 is blind: the run picks at random which trial is
+camera-synced and only the log and the result card say which.
 
 ## What to look at first on the phone, and what to try if it's wrong
 

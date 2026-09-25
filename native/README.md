@@ -13,7 +13,7 @@ sensors read directly at 200 Hz.
 ## Build and test
 
 ```bash
-./gradlew :core:test            # 163 JVM tests - no Android SDK needed
+./gradlew :core:test            # 184 JVM tests - no Android SDK needed
 ./gradlew :app:assembleField    # the build for phones: non-debuggable, full speed (needs the SDK)
 ./gradlew :app:assembleDebug    # debuggable, for a debugger - runs at about half speed on the A07
 ./gradlew :app:connectedFieldAndroidTest   # on-device smoke tests (phone connected)
@@ -46,7 +46,7 @@ compared side by side.
 Synthetic taps are blocked on the Galaxy A07, so every test control is a
 launch extra (`adb shell am start -S -n dev.alfieprojects.mirroredlotus/.MainActivity ...`).
 Keep the `-S`: it force-stops the running app first. Without it, the running
-app only rereads `testMode`, `hud` and `syncCamera`.
+app only rereads `testMode`, `hud`, `syncCamera` and `fieldTest`.
 
 | Extra | Effect |
 |---|---|
@@ -58,6 +58,7 @@ app only rereads `testMode`, `hud` and `syncCamera`.
 | `--ef simBearing 225` | Direction the walker comes from, degrees from the site |
 | `--ez syncCamera false` | Pose the overlay with the newest sensor sample instead of the camera frame's exposure time (A/B) |
 | `--ef headingTau 2.0` | Compass smoothing time constant, seconds |
+| `--es fieldTest t2` | Start a guided field test (`t1` to `t6`, see below) |
 
 Logs: `adb logcat -s Lotus LotusProbe LotusCamera LotusRenderer LotusAudio LotusLocation`.
 
@@ -68,6 +69,29 @@ mode, triple-tap the bottom-right corner for the HUD, tap ♪ for earphone mode.
 **Export Session** in the HUD opens the share sheet with the session JSON (same
 format as the web export, plus latency samples). A copy is also saved to
 `Android/data/dev.alfieprojects.mirroredlotus/files/sessions/`.
+
+## Field tests on the phone, no laptop needed
+
+Long-press the build label under the splash (or the HUD text) for the
+**Field tests** menu. Each test puts an instruction card on screen, times
+its own phases, buzzes at each change (a tick 3 s before a timed phase ends),
+and ends with a PASS/FAIL card. Every run writes a log, one JSON object per
+line, flushed every 5 s: `Download/LotusTests/<yyyyMMdd-HHmmss>_<id>.json` on
+Android 10+ (visible in Files; `adb pull /sdcard/Download/LotusTests/`), or
+`Android/data/dev.alfieprojects.mirroredlotus/files/LotusTests/` below that.
+Hold "hold to abort" to stop a run.
+
+| Test | Asks | Pass |
+|---|---|---|
+| T1 Face-up placement | Lay it face-up pointing at something, lift it and face that thing; 3 rounds | \|Δ\| < 15° each round |
+| T2 Stand still | 45 s each: hold steady, pan slowly, handle normally, feet still | ≤ 2 steps per part |
+| T3 Step count | 20 steps phone held up, then 20 at your side | 20 ± 2 each |
+| T4 Swim A/B | Pan briskly twice, blind to which trial is camera-synced; pick the steadier | picked the synced one |
+| T5 Thermal soak | The full show for 20 minutes | photon ≤ 100 ms 90% of the time; logs time to MODERATE/SEVERE |
+| T6 Compass steadiness | Hold on one spot for 60 s | informational: heading, compass and correction spread |
+
+The logic (phases, poses, scoring, log lines) is in `core/fieldtest/` with its
+tests; the app only draws the card and writes the file.
 
 ## Layout
 
@@ -80,10 +104,15 @@ core/   pure Kotlin, no Android imports - everything with a test
   camera/       CameraTiming, CameraProjection, PreviewSizeSelector, FpsRangeSelector
   render/       Meshes, SceneLayout, MonumentPlacement, TextSpecs, ShaderSources (+ GLSL resources)
   audio/        ExplosionVoice, SpatialMixer, Compressor, Reverb, Biquad
+  track/        PositionTracker, StepDetector, SwingGate, WalkHeading
+  perf/         ThermalPolicy (the degrade ladder)
+  fieldtest/    FieldTests (T1-T6), FieldTestRunner, FieldTestLog
   ui/ record/ telemetry/ sim/ geo/ math/
 app/    Android: Camera2, sensors, GLES renderer, AudioTrack, location, Views
   gl/ArRenderer.kt        one GL pass: camera + monument + fireworks
   camera/CameraFeed.kt    Camera2 -> SurfaceTexture, REALTIME timestamps
   sensors/OrientationSource.kt   200 Hz rotation vectors -> heading fusion -> history
+  fieldtest/              instruction card, MediaStore log writer
+  perf/ThermalMonitor.kt  thermal status and headroom
   MainActivity.kt         wiring, splash, HUD, taps, export
 ```

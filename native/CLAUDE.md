@@ -44,6 +44,14 @@ AudioTrack, Views) and routes events into `:core`.
 - **Shaders** live in `core/src/main/resources/shaders/`. `ShaderSourcesTest`
   compiles them with glslang when it's installed and checks the uniform names
   `ArRenderer` binds.
+- **The render loop idles before the trigger** (`RenderPace.IDLE`) and may be
+  camera-paced after it (the thermal ladder). Anything the main thread needs
+  continuously, like the HUD's camera heading, must come from
+  `OrientationHistory`, not from `RenderTelemetry`, which only moves when a
+  frame is drawn.
+- **Field tests:** phases, poses, scoring and log lines live in
+  `core/fieldtest/` with tests. `:app/fieldtest/` only draws, buzzes and writes.
+  A new check is a change to `FieldTests` plus a test, not UI code.
 - **The beacon is a thin pillar.** Don't reintroduce light-beam or tractor-beam
   forms (rejected as tacky).
 

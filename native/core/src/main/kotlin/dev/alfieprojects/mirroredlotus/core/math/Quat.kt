@@ -74,6 +74,19 @@ data class Quat(val w: Double, val x: Double, val y: Double, val z: Double) {
             return Quat(cos(radians / 2), ax * s, ay * s, az * s)
         }
 
+        /**
+         * Angle of the rotation between orientations [p] and [q] (`[w, x, y, z]`),
+         * allocation-free: atan2 of conj(p)·q's vector part over its scalar part,
+         * since sensor steps are milliradians, where acos rounds to zero.
+         */
+        fun angleBetween(p: DoubleArray, q: DoubleArray): Double {
+            val w = p[0] * q[0] + p[1] * q[1] + p[2] * q[2] + p[3] * q[3]
+            val x = p[0] * q[1] - p[1] * q[0] - p[2] * q[3] + p[3] * q[2]
+            val y = p[0] * q[2] + p[1] * q[3] - p[2] * q[0] - p[3] * q[1]
+            val z = p[0] * q[3] - p[1] * q[2] + p[2] * q[1] - p[3] * q[0]
+            return 2.0 * atan2(sqrt(x * x + y * y + z * z), abs(w))
+        }
+
         fun fromArray(a: DoubleArray, offset: Int = 0) =
             Quat(a[offset], a[offset + 1], a[offset + 2], a[offset + 3])
 

@@ -8,6 +8,7 @@ import android.hardware.SensorManager
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
+import dev.alfieprojects.mirroredlotus.core.geo.Geo
 import dev.alfieprojects.mirroredlotus.core.orientation.Frames
 import dev.alfieprojects.mirroredlotus.core.orientation.HeadingFusion
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
@@ -16,6 +17,7 @@ import dev.alfieprojects.mirroredlotus.core.track.StepDetector
 import dev.alfieprojects.mirroredlotus.core.track.SwingGate
 import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.core.ui.HeadingQuality
+import kotlin.math.atan2
 
 /**
  * Phone orientation straight from the sensor HAL into [history], on a dedicated
@@ -54,6 +56,24 @@ class OrientationSource(
      */
     @Volatile
     var onStep: ((east: Double, north: Double) -> Unit)? = null
+
+    /** Footsteps credited so far (cumulative across pauses; the field tests use differences). */
+    @Volatile
+    var detectedSteps = 0L
+        private set
+
+    /**
+     * The raw `ROTATION_VECTOR`'s walking heading and the fusion's current yaw
+     * correction, degrees (NaN until known): the compass test's numbers.
+     */
+    @Volatile
+    var compassHeadingDeg = Double.NaN
+        private set
+
+    @Volatile
+    var yawCorrectionDeg = Double.NaN
+        private set
+    private val compassFacing = DoubleArray(2)
 
     private val fusion = HeadingFusion(headingTauSeconds)
     private val rawQ = DoubleArray(4)
@@ -142,6 +162,7 @@ class OrientationSource(
             val v = event.values
             val t = event.timestamp
             val credit = steps.onSample(t, v[0].toDouble(), v[1].toDouble(), v[2].toDouble(), swing.swinging(t))
+            if (credit > 0) detectedSteps = steps.steps
             if (credit > 0 && WalkHeading.of(latestEnu, facing)) {
                 val listener = onStep ?: return
                 repeat(credit) { listener(facing[0], facing[1]) }
@@ -156,7 +177,12 @@ class OrientationSource(
             Sensor.TYPE_ROTATION_VECTOR -> {
                 lastAbsoluteAtMs = now
                 headingAccuracyRad = if (event.values.size >= 5 && event.values[4] > 0f) event.values[4] else Float.NaN
-                fusion.onAbsolute(event.timestamp, rawQ, outQ)
+                if (WalkHeading.of(rawQ, compassFacing)) {
+                    compassHeadingDeg = Geo.normaliseDeg(Math.toDegrees(atan2(compassFacing[0], compassFacing[1])))
+                }
+                fusion.onAbsolute(event.timestamp, rawQ, outQ).also {
+                    yawCorrectionDeg = Math.toDegrees(fusion.correctionRad)
+                }
             }
             else -> false
         }

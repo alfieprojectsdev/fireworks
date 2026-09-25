@@ -13,4 +13,9 @@
     <dimen name="compass_text">10.5sp</dimen>
     <dimen name="audio_button_text">18sp</dimen>
     <dimen name="hud_text">11.5sp</dimen>
+    <!-- Field-test card: readable at arm's length while handling the phone. -->
+    <dimen name="field_card_top">112dp</dimen>
+    <dimen name="field_instruction_text">21sp</dimen>
+    <dimen name="field_timer_text">17sp</dimen>
+    <dimen name="field_button_text">19sp</dimen>
 </resources>

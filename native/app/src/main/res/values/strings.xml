@@ -31,4 +31,12 @@
     <string name="export_empty">No GPS events recorded yet.</string>
     <string name="export_chooser">Share session</string>
     <string name="export_failed">Could not write the session file.</string>
+
+    <!-- Field tests: the scripts' own text comes from :core (FieldTests). -->
+    <string name="field_menu_title">Field tests</string>
+    <string name="field_abort">hold to abort</string>
+    <string name="field_busy">A field test is already running.</string>
+    <string name="field_unknown">No field test called %1$s.</string>
+    <string name="field_log_path">log: %1$s</string>
+    <string name="field_log_unavailable">log: could not create a file</string>
 </resources>

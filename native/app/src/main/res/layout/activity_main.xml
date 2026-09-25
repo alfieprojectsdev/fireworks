@@ -55,7 +55,8 @@
             android:id="@+id/build_version"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="12dp"
+            android:padding="12dp"
             android:alpha="0.2"
             android:fontFamily="monospace"
             android:textColor="@color/lotus_white"
@@ -122,6 +123,79 @@
             android:fontFamily="monospace"
             android:paddingTop="6dp"
             android:text="@string/hud_export"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/hud_text" />
+    </LinearLayout>
+
+    <!-- Field-test card (long-press the build label or the HUD). It sits below
+         the secret corner, and before both corners in z-order, so their tap
+         targets stay reachable while a test runs. -->
+    <LinearLayout
+        android:id="@+id/field_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:layout_marginHorizontal="@dimen/edge_margin"
+        android:layout_marginTop="@dimen/field_card_top"
+        android:background="@drawable/hud_background"
+        android:orientation="vertical"
+        android:padding="14dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/field_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:alpha="0.7"
+            android:fontFamily="monospace"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/hud_text" />
+
+        <TextView
+            android:id="@+id/field_instruction"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="sans-serif"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/field_instruction_text" />
+
+        <TextView
+            android:id="@+id/field_timer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/field_timer_text" />
+
+        <TextView
+            android:id="@+id/field_metric"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:alpha="0.85"
+            android:fontFamily="monospace"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/hud_text" />
+
+        <LinearLayout
+            android:id="@+id/field_buttons"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal" />
+
+        <TextView
+            android:id="@+id/field_abort"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="6dp"
+            android:alpha="0.5"
+            android:fontFamily="monospace"
+            android:padding="6dp"
+            android:text="@string/field_abort"
             android:textColor="@color/lotus_white"
             android:textSize="@dimen/hud_text" />
     </LinearLayout>

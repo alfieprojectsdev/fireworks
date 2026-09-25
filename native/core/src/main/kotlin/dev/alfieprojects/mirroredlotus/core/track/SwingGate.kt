@@ -1,8 +1,6 @@
 package dev.alfieprojects.mirroredlotus.core.track
 
-import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.sqrt
+import dev.alfieprojects.mirroredlotus.core.math.Quat
 
 /**
  * Whether the phone is being swung, for [StepDetector]'s rotation gate.
@@ -35,7 +33,7 @@ class SwingGate(
             val dt = (tNanos - prevNanos) * 1e-9
             // A gap (sensor paused, thread stalled) says nothing about the rate.
             if (dt > 0 && dt < MAX_GAP_S) {
-                rateRadPerS = angleBetween(prev, q) / dt
+                rateRadPerS = Quat.angleBetween(prev, q) / dt
                 if (rateRadPerS > thresholdRadPerS) lastFastNanos = tNanos
             }
         }
@@ -53,17 +51,5 @@ class SwingGate(
 
     private companion object {
         const val MAX_GAP_S = 0.25
-
-        /**
-         * Angle of conj(p)·q, via atan2 of its vector part over its scalar part.
-         * At 200 Hz the step is milliradians, where acos would round to zero.
-         */
-        fun angleBetween(p: DoubleArray, q: DoubleArray): Double {
-            val w = p[0] * q[0] + p[1] * q[1] + p[2] * q[2] + p[3] * q[3]
-            val x = p[0] * q[1] - p[1] * q[0] - p[2] * q[3] + p[3] * q[2]
-            val y = p[0] * q[2] + p[1] * q[3] - p[2] * q[0] - p[3] * q[1]
-            val z = p[0] * q[3] - p[1] * q[2] + p[2] * q[1] - p[3] * q[0]
-            return 2.0 * atan2(sqrt(x * x + y * y + z * z), abs(w))
-        }
     }
 }

@@ -10,6 +10,7 @@ import android.hardware.camera2.CameraManager
 import android.opengl.EGL14
 import android.opengl.EGLConfig
 import android.opengl.GLES30
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,10 +18,15 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dev.alfieprojects.mirroredlotus.core.audio.ListenerPose
 import dev.alfieprojects.mirroredlotus.core.audio.SpatialMixer
 import dev.alfieprojects.mirroredlotus.core.camera.PreviewSizeSelector
+import dev.alfieprojects.mirroredlotus.core.fieldtest.FieldTestLog
+import dev.alfieprojects.mirroredlotus.core.fieldtest.FieldTests
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
 import dev.alfieprojects.mirroredlotus.core.render.ShaderSources
+import dev.alfieprojects.mirroredlotus.fieldtest.FieldLogWriter
 import dev.alfieprojects.mirroredlotus.gl.GlProgram
 import dev.alfieprojects.mirroredlotus.sensors.OrientationSource
+import java.io.File
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -46,6 +52,36 @@ class DeviceSmokeTest {
                 assertTrue("${p.name} linked", program.id != 0)
             }
             assertEquals(GLES30.GL_NO_ERROR, GLES30.glGetError())
+        }
+    }
+
+    @Test
+    fun fieldTestLogLandsWhereTheWearerCanFindIt() {
+        val name = "smoke-${System.currentTimeMillis()}.json"
+        val writer = FieldLogWriter.create(context, name)
+        assertNotNull("log file created", writer)
+        writer!!
+        val log = FieldTestLog(t0Ms = 1_000)
+        writer.append(log.header(FieldTests.standStill(), "2026-09-25T00:00:00Z", "smoke", "test", "device"))
+        writer.flush()
+        writer.append(log.note(1_500, "second chunk"))
+        writer.close()
+        assertTrue("writes finished", writer.awaitClosed(5_000))
+        Log.i(TAG, "field log at ${writer.displayPath}")
+
+        val text = writer.uri?.let { uri ->
+            try {
+                context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() }
+            } finally {
+                context.contentResolver.delete(uri, null, null)
+            }
+        } ?: File(writer.displayPath).let { f -> f.readText().also { f.delete() } }
+        val lines = text.trimEnd().split("\n")
+        assertEquals(2, lines.size)
+        assertEquals("run", JSONObject(lines[0]).getString("type"))
+        assertEquals(500, JSONObject(lines[1]).getInt("t"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            assertTrue(writer.displayPath, writer.displayPath.startsWith("Download/LotusTests/"))
         }
     }
 

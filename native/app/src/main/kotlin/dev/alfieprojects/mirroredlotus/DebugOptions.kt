@@ -14,10 +14,12 @@ import dev.alfieprojects.mirroredlotus.core.site.Sites
  *     --ez testMode true --ez hud true
  * adb shell am start -S -n dev.alfieprojects.mirroredlotus/.MainActivity \
  *     --es simulate church --ef simSpeed 20 --ez hud true
+ * adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity --es fieldTest t2
  * ```
  *
  * `-S` force-stops the running app first. Without it the activity (singleTask)
- * is reused and only `testMode`, `hud` and `syncCamera` are read again.
+ * is reused and only `testMode`, `hud`, `syncCamera` and `fieldTest` are read
+ * again.
  */
 data class DebugOptions(
     /** Start straight into test mode (the triple-tap), once permissions are in. */
@@ -33,6 +35,8 @@ data class DebugOptions(
     val simFromBearingDeg: Double = 225.0,
     /** Compass smoothing time constant for the heading fusion, seconds. */
     val headingTauS: Double = 2.0,
+    /** Start this guided field test (`t1`...`t6`) once the app is running. */
+    val fieldTest: String? = null,
 ) {
     companion object {
         fun from(intent: Intent?): DebugOptions {
@@ -47,6 +51,7 @@ data class DebugOptions(
                 simSpeedMps = intent.getFloatExtra("simSpeed", d.simSpeedMps.toFloat()).toDouble(),
                 simFromBearingDeg = intent.getFloatExtra("simBearing", d.simFromBearingDeg.toFloat()).toDouble(),
                 headingTauS = intent.getFloatExtra("headingTau", d.headingTauS.toFloat()).toDouble().coerceIn(0.1, 30.0),
+                fieldTest = intent.getStringExtra("fieldTest"),
             )
         }
     }

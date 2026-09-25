@@ -175,6 +175,37 @@ of the distance walked.
 The pre-trigger decision still uses raw fixes: at that range a few metres don't
 matter.
 
+### 8. Heat
+
+A phone held up for a 20-minute walk-in, running the camera, GL and GPS,
+throttles. On the A07 at SEVERE the frame rate halved and the photon age
+went from 62 to 289 ms. `ThermalPolicy` reads the thermal status and the 10 s
+headroom forecast and steps down a ladder before the governor does:
+
+| Rung | When | Render | Surface | Fireworks |
+|---|---|---|---|---|
+| 0 | cool | continuous 60 Hz | 100% | 15 |
+| 1 | MODERATE, or headroom ≥ 0.85 | once per camera frame | 100% | 9 |
+| 2 | SEVERE, or headroom ≥ 1.0 | once per camera frame | 75% | 6 |
+| 3 | CRITICAL and above | once per camera frame | 50% | 4 |
+
+Camera pacing is the cheap win. With the pose synced to the frame's exposure,
+a 60 Hz loop draws each 30 fps camera picture twice with the same pose, so
+drawing once per frame halves the GPU work without loosening the lock. A
+10 Hz watchdog keeps the story moving if the camera stalls. The smaller
+surface is upscaled by the compositor, and lines are thinned to match. Before
+the trigger an opaque splash covers the view, so the loop idles there.
+
+### 9. Field tests
+
+`core/fieldtest/` holds six guided tests the wearer runs alone. Each script
+is a list of phases that end on a timer, a held pose (face-up, upright, still
+for N seconds), a tap or a choice. `FieldTestRunner` steps through them from
+10 Hz samples, accumulates per-phase stats (steps, tracker drift, Δ, fps,
+photon age, thermal marks, heading spread) and scores the run. `FieldTestLog`
+writes it as JSON Lines. `:app` only draws the card, buzzes, runs the phase
+actions and appends the lines to a MediaStore file every 5 s.
+
 ## Threads and ownership
 
 | Thread | Owns | Talks to others via |

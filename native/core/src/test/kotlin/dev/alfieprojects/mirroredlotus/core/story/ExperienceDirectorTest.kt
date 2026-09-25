@@ -133,6 +133,28 @@ class ExperienceDirectorTest {
     }
 
     @Test
+    fun `a field test can re-place the monument ahead, even over a GPS-anchored session`() {
+        val user = Geo.destination(church.lat, church.lng, Math.toRadians(180.0), 600.0)
+        val d = ExperienceDirector(Rng(3))
+        d.start(church, user.lat, user.lng, testMode = false)
+        repeat(30) { d.tick() }
+        d.placeAhead(church, forwardX = 1.0, forwardZ = 0.0) // facing east
+        assertTrue(d.testMode)
+        assertEquals(40.0, d.groupX, 1e-9)
+        assertEquals(0.0, d.groupZ, 1e-9)
+        assertEquals(0.0, d.userDistanceM, 0.0)
+        d.onLocation(user.lat, user.lng) // later fixes no longer move it
+        repeat(60) { d.tick() }
+        assertEquals(40.0, d.groupX, 1e-9)
+        assertEquals(0.0, d.groupZ, 1e-9)
+
+        val fresh = ExperienceDirector(Rng(3))
+        fresh.placeAhead(church, forwardX = 0.0, forwardZ = 1.0) // facing south
+        assertTrue(fresh.started && fresh.testMode)
+        assertEquals(40.0, fresh.groupZ, 1e-9)
+    }
+
+    @Test
     fun `the thermal ladder's firework cap holds`() {
         val d = ExperienceDirector(Rng(8))
         d.start(church, church.lat, church.lng, testMode = true)

@@ -5,9 +5,10 @@ import java.util.Locale
 /**
  * Minimal streaming JSON writer. `org.json` exists on Android but is a stub on
  * the JVM, and a dependency for one export is not worth it. Non-finite numbers
- * become `null`, since JSON has no NaN.
+ * become `null`, since JSON has no NaN. [compact] writes everything on one
+ * line, for JSON Lines logs.
  */
-class JsonWriter(private val indent: String = "  ") {
+class JsonWriter(private val indent: String = "  ", private val compact: Boolean = false) {
     private val sb = StringBuilder()
     private val needsComma = ArrayDeque<Boolean>()
     private var afterKey = false
@@ -20,7 +21,7 @@ class JsonWriter(private val indent: String = "  ") {
     fun name(key: String): JsonWriter {
         separator()
         string(key)
-        sb.append(": ")
+        sb.append(if (compact) ":" else ": ")
         afterKey = true
         return this
     }
@@ -81,6 +82,7 @@ class JsonWriter(private val indent: String = "  ") {
     }
 
     private fun newline() {
+        if (compact) return
         sb.append('\n')
         repeat(needsComma.size) { sb.append(indent) }
     }

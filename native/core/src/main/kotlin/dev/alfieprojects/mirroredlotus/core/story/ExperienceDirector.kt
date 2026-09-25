@@ -126,12 +126,7 @@ class ExperienceDirector(
         this.site = site
         this.testMode = testMode
         if (testMode) {
-            val n = sqrt(forwardX * forwardX + forwardZ * forwardZ)
-            val fx = if (n > 1e-6) forwardX / n else 0.0
-            val fz = if (n > 1e-6) forwardZ / n else -1.0
-            groupX = fx * TEST_MODE_DISTANCE_M
-            groupZ = fz * TEST_MODE_DISTANCE_M
-            userDistanceM = 0.0
+            placeAheadNow(forwardX, forwardZ)
         } else {
             val o = SceneGeo.offset(userLat, userLng, site.lat, site.lng)
             groupX = o.x
@@ -141,6 +136,34 @@ class ExperienceDirector(
         groupY = GROUP_HEIGHT_M
         targetX = groupX
         targetZ = groupZ
+    }
+
+    /**
+     * Field tests: puts the monument [TEST_MODE_DISTANCE_M] ahead along
+     * ([forwardX], [forwardZ]) at once, with no glide, so a measurement taken
+     * a moment later sees it where it belongs. Switches to test-mode staging
+     * (every act shown, later fixes ignored) and starts on [site] if needed.
+     */
+    fun placeAhead(site: Site, forwardX: Double, forwardZ: Double) {
+        if (!started) {
+            start(site, site.lat, site.lng, testMode = true, forwardX = forwardX, forwardZ = forwardZ)
+            return
+        }
+        testMode = true
+        anchorPending = false
+        placeAheadNow(forwardX, forwardZ)
+        groupY = GROUP_HEIGHT_M
+        targetX = groupX
+        targetZ = groupZ
+    }
+
+    private fun placeAheadNow(forwardX: Double, forwardZ: Double) {
+        val n = sqrt(forwardX * forwardX + forwardZ * forwardZ)
+        val fx = if (n > 1e-6) forwardX / n else 0.0
+        val fz = if (n > 1e-6) forwardZ / n else -1.0
+        groupX = fx * TEST_MODE_DISTANCE_M
+        groupZ = fz * TEST_MODE_DISTANCE_M
+        userDistanceM = 0.0
     }
 
     /**
