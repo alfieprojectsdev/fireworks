@@ -10,11 +10,14 @@ import dev.alfieprojects.mirroredlotus.core.site.Sites
  * does nothing), so everything worth toggling in a test is reachable here.
  *
  * ```
- * adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity \
+ * adb shell am start -S -n dev.alfieprojects.mirroredlotus/.MainActivity \
  *     --ez testMode true --ez hud true
- * adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity \
+ * adb shell am start -S -n dev.alfieprojects.mirroredlotus/.MainActivity \
  *     --es simulate church --ef simSpeed 20 --ez hud true
  * ```
+ *
+ * `-S` force-stops the running app first. Without it the activity (singleTask)
+ * is reused and only `testMode`, `hud` and `syncCamera` are read again.
  */
 data class DebugOptions(
     /** Start straight into test mode (the triple-tap), once permissions are in. */

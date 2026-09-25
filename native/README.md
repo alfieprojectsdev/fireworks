@@ -13,7 +13,7 @@ sensors read directly at 200 Hz.
 ## Build and test
 
 ```bash
-./gradlew :core:test            # 135 JVM tests - no Android SDK needed
+./gradlew :core:test            # 138 JVM tests - no Android SDK needed
 ./gradlew :app:assembleDebug    # needs the SDK (local.properties sdk.dir or ANDROID_HOME)
 ./gradlew :app:connectedDebugAndroidTest   # on-device smoke tests (phone connected)
 ```
@@ -38,11 +38,13 @@ compared side by side.
 ## Launch switches
 
 Synthetic taps are blocked on the Galaxy A07, so every test control is a
-launch extra (`adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity ...`):
+launch extra (`adb shell am start -S -n dev.alfieprojects.mirroredlotus/.MainActivity ...`).
+Keep the `-S`: it force-stops the running app first. Without it, the running
+app only rereads `testMode`, `hud` and `syncCamera`.
 
 | Extra | Effect |
 |---|---|
-| `--ez testMode true` | Start in test mode: monument 40 m ahead, every act revealed (the triple-tap) |
+| `--ez testMode true` | Start in test mode: monument 40 m ahead, every act revealed (the triple-tap). Waits up to 2 s for a compass-corrected heading first. |
 | `--ez hud true` | Show the debug HUD from launch |
 | `--es simulate church` (or `origin`) | Replace GPS with a scripted walk-in toward that site |
 | `--ef simSpeed 20` | Walk-in speed, m/s (default 1.4) |

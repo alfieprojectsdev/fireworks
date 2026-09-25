@@ -24,7 +24,13 @@ class SitesTest {
     }
 
     @Test
-    fun `triggers at exactly the radius and not a metre beyond`() {
+    fun `the trigger ring is inclusive at exactly 1800 m`() {
+        assertTrue(TriggerPolicy.inRange(1800.0))
+        assertTrue(!TriggerPolicy.inRange(Math.nextUp(1800.0)))
+    }
+
+    @Test
+    fun `positions just inside and just outside the ring decide correctly`() {
         val inside = pointFrom(Sites.CHURCH, 0.0, 1799.9)
         val outside = pointFrom(Sites.CHURCH, 0.0, 1800.5)
         assertTrue(TriggerPolicy.evaluate(inside.lat, inside.lng) is TriggerDecision.Trigger)

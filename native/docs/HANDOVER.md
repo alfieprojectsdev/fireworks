@@ -8,7 +8,7 @@ and phones.
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 135 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 138 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15 (`ShaderSourcesTest`) |
 | `:app` debug APK | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors |
 | Instrumented tests (`DeviceSmokeTest`) | **Compile**. Not run yet: they need a phone |
@@ -27,7 +27,7 @@ when it opens the `native/` folder. Otherwise, create it with
 
 ```powershell
 cd fireworks\native
-.\gradlew.bat :core:test          # 135 tests, ~10 s
+.\gradlew.bat :core:test          # 138 tests, ~10 s
 .\gradlew.bat :app:assembleDebug
 ```
 
@@ -67,6 +67,7 @@ first thing to try.
 
 | Symptom | Most likely cause | First fix to try |
 |---|---|---|
+| Test-mode monument not ahead of the camera | Compass heading wasn't ready within the 2 s wait (`PoseGate`), so it fell back to north | Check the HUD `heading:` line. If it isn't `game+mag`, the compass hasn't reported. |
 | Camera picture sideways or mirrored | The SurfaceTexture transform didn't include the sensor rotation on this HAL | Rotate `uv` by the sensor orientation in `camera.vert` before applying `uTexMatrix`. Log `st` once to confirm. |
 | Black screen, HUD says `cam: 0.0` | Camera session failed | `adb logcat -s LotusCamera Lotus`. The failure reason is logged. |
 | Overlay swims against the church while panning | Pose not synced (HUD shows `pose: latest`) or a wrong timestamp base | Check the HUD `pose:` line and `LotusProbe ts=`. Compare with `--ez syncCamera false`. |

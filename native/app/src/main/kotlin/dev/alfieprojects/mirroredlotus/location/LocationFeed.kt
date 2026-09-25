@@ -94,7 +94,19 @@ class DeviceLocationFeed(private val context: Context) : LocationFeed {
             }
         } else {
             Log.i(TAG, "Play services unavailable ($playServices); using the platform GPS provider")
-            val listener = LocationListener { deliver(it, "gps") }
+            // Not a lambda: before API 30 the provider/status callbacks have no
+            // default implementation, and toggling location would throw
+            // AbstractMethodError on a SAM-converted listener.
+            val listener = object : LocationListener {
+                override fun onLocationChanged(location: Location) = deliver(location, "gps")
+                override fun onProviderEnabled(provider: String) = Unit
+                override fun onProviderDisabled(provider: String) {
+                    this@DeviceLocationFeed.sink?.onProblem(LocationProblem.SERVICES_OFF)
+                }
+
+                @Deprecated("Deprecated in API 29; still called on older releases")
+                override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
+            }
             platformListener = listener
             try {
                 locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper())

@@ -72,9 +72,12 @@ sealed interface TriggerDecision {
 }
 
 object TriggerPolicy {
+    /** Inclusive: a wearer exactly on the ring triggers. */
+    fun inRange(distanceM: Double): Boolean = distanceM <= Sites.TRIGGER_RADIUS_M
+
     fun evaluate(lat: Double, lng: Double, sites: List<Site> = Sites.ALL): TriggerDecision {
         val near = nearestSite(lat, lng, sites)
-        return if (near.distanceM <= Sites.TRIGGER_RADIUS_M) {
+        return if (inRange(near.distanceM)) {
             TriggerDecision.Trigger(near)
         } else {
             TriggerDecision.Approach(near)

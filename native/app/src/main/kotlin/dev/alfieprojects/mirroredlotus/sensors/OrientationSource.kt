@@ -61,6 +61,21 @@ class OrientationSource(
     var lastAnyAtMs: Long = 0
         private set
 
+    /**
+     * Timestamp of the first published sample that already carries the
+     * compass heading. Until a sample at or after it is in the history, the
+     * heading is only the gyro's arbitrary yaw.
+     */
+    @Volatile
+    private var headingSinceNanos = Long.MAX_VALUE
+
+    /**
+     * True once the newest orientation is north-anchored (or there is no
+     * compass to wait for). Test mode waits on this before placing the
+     * monument along the camera's heading.
+     */
+    val headingReady: Boolean get() = history.latestTime().let { it != Long.MIN_VALUE && it >= headingSinceNanos }
+
     val hasGame: Boolean get() = game != null
     val hasCompass: Boolean get() = absolute != null
 
@@ -79,6 +94,8 @@ class OrientationSource(
         if (thread != null) return
         fusion.reset()
         history.clear()
+        // With no compass, the gyro heading is as good as it will ever get.
+        headingSinceNanos = if (absolute == null) Long.MIN_VALUE else Long.MAX_VALUE
         val t = HandlerThread("orientation", Process.THREAD_PRIORITY_URGENT_DISPLAY).apply { start() }
         thread = t
         val h = Handler(t.looper)
@@ -112,6 +129,11 @@ class OrientationSource(
         if (publish) {
             history.push(event.timestamp, outQ)
             rate.record(event.timestamp)
+            // The first sample published after the compass correction exists
+            // (fused, or compass-only) marks the heading as trustworthy.
+            if (headingSinceNanos == Long.MAX_VALUE &&
+                (fusion.mode == HeadingFusion.Mode.FUSED || fusion.mode == HeadingFusion.Mode.ABSOLUTE_ONLY)
+            ) headingSinceNanos = event.timestamp
         }
     }
 

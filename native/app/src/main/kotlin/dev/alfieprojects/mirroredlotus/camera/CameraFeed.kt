@@ -55,17 +55,28 @@ class CameraFeed(context: Context) {
     }
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-    private var thread: HandlerThread? = null
-    private var handler: Handler? = null
-    private var device: CameraDevice? = null
-    private var session: CameraCaptureSession? = null
+
+    // One camera thread for the feed's whole life. Quitting it on close() would
+    // drop an in-flight onOpened from a cancelled open, and that device would
+    // then never be closed.
+    private val thread = HandlerThread("camera").apply { start() }
+    private val handler = Handler(thread.looper)
+
+    // open()/close() run on the main thread, the callbacks on the camera thread.
+    // Every open gets a generation; a callback from an older one (the feed was
+    // closed or reopened meanwhile) closes what it was handed and does nothing else.
+    @Volatile private var generation = 0
+    @Volatile private var opening = false
+    @Volatile private var device: CameraDevice? = null
+    @Volatile private var session: CameraCaptureSession? = null
     private var surface: Surface? = null
 
     /** Latest frame's exposure and readout skew, for mid-exposure pose sampling. */
     @Volatile var exposureNanos: Long = 0L; private set
     @Volatile var rollingSkewNanos: Long = 0L; private set
 
-    val isOpen: Boolean get() = device != null
+    /** True from [open] until [close] or a failure - including while the device is still opening. */
+    val isOpen: Boolean get() = opening || device != null
 
     @SuppressLint("MissingPermission") // the activity checks CAMERA before calling
     fun open(texture: SurfaceTexture, displayShortSide: Int, callback: Callback) {
@@ -99,36 +110,40 @@ class CameraFeed(context: Context) {
         val s = Surface(texture)
         surface = s
 
-        val t = HandlerThread("camera").apply { start() }
-        thread = t
-        val h = Handler(t.looper)
-        handler = h
-
+        val gen = ++generation
+        opening = true
         try {
             cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    if (gen != generation) {
+                        camera.close() // closed or reopened while this was opening
+                        return
+                    }
                     device = camera
-                    createSession(camera, s, chars, size, fps, intrinsics, callback)
+                    opening = false
+                    createSession(gen, camera, s, chars, size, fps, intrinsics, callback)
                 }
 
-                override fun onDisconnected(camera: CameraDevice) {
-                    camera.close()
-                    if (device === camera) device = null
-                    callback.onError("camera disconnected")
-                }
+                override fun onDisconnected(camera: CameraDevice) = fail(camera, "camera disconnected")
 
-                override fun onError(camera: CameraDevice, error: Int) {
+                override fun onError(camera: CameraDevice, error: Int) = fail(camera, "camera error $error")
+
+                private fun fail(camera: CameraDevice, message: String) {
                     camera.close()
-                    if (device === camera) device = null
-                    callback.onError("camera error $error")
+                    if (gen != generation) return
+                    device = null
+                    opening = false
+                    callback.onError(message)
                 }
-            }, h)
+            }, handler)
         } catch (e: Exception) {
+            opening = false
             callback.onError(e.message ?: e.javaClass.simpleName)
         }
     }
 
     private fun createSession(
+        gen: Int,
         camera: CameraDevice,
         target: Surface,
         chars: CameraCharacteristics,
@@ -137,13 +152,17 @@ class CameraFeed(context: Context) {
         intrinsics: CameraIntrinsics,
         callback: Callback,
     ) {
-        val h = handler ?: return
+        val h = handler
         var base = if (chars.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
             CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
         ) CameraTiming.Base.REALTIME else CameraTiming.Base.MONOTONIC
 
         val stateCallback = object : CameraCaptureSession.StateCallback() {
             override fun onConfigured(s: CameraCaptureSession) {
+                if (gen != generation) {
+                    s.close()
+                    return
+                }
                 session = s
                 try {
                     s.setRepeatingRequest(buildRequest(camera, target, chars, fps), captureCallback, h)
@@ -160,7 +179,7 @@ class CameraFeed(context: Context) {
             }
 
             override fun onConfigureFailed(s: CameraCaptureSession) {
-                callback.onError("session configuration failed")
+                if (gen == generation) callback.onError("session configuration failed")
             }
         }
 
@@ -217,15 +236,20 @@ class CameraFeed(context: Context) {
     }
 
     fun close() {
+        generation++ // any callback still in flight is now stale
+        opening = false
         runCatching { session?.close() }
         session = null
         runCatching { device?.close() }
         device = null
         runCatching { surface?.release() }
         surface = null
-        thread?.quitSafely()
-        thread = null
-        handler = null
+    }
+
+    /** Ends the camera thread. The feed can't be reopened afterwards. */
+    fun release() {
+        close()
+        thread.quitSafely()
     }
 
     private fun intrinsicsOf(chars: CameraCharacteristics): CameraIntrinsics {

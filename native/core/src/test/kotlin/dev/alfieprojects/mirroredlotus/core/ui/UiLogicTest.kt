@@ -126,4 +126,25 @@ class UiLogicTest {
         assertEquals("photon: 61ms  pose: cam-sync lag 48ms", lines[7])
         assertEquals("heading: game+mag", lines[8])
     }
+
+    @Test
+    fun `pose gate waits for a ready heading, then fires once`() {
+        val g = PoseGate(timeoutMs = 2000)
+        assertFalse(g.poll(0, headingReady = true)) // nothing requested
+        g.request(100)
+        assertTrue(g.pending)
+        assertFalse(g.poll(200, headingReady = false))
+        assertTrue(g.poll(300, headingReady = true))
+        assertFalse(g.pending)
+        assertFalse(g.poll(400, headingReady = true))
+    }
+
+    @Test
+    fun `pose gate gives up waiting after its timeout`() {
+        val g = PoseGate(timeoutMs = 2000)
+        g.request(1000)
+        g.request(2500) // a second request keeps the first deadline
+        assertFalse(g.poll(2999, headingReady = false))
+        assertTrue(g.poll(3000, headingReady = false))
+    }
 }

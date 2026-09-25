@@ -50,6 +50,11 @@ class OrientationHistory(capacity: Int = 512) {
         head = 0
     }
 
+    /** Timestamp of the newest sample, or `Long.MIN_VALUE` when empty. */
+    fun latestTime(): Long = synchronized(lock) {
+        if (size == 0) Long.MIN_VALUE else times[(head - 1 + times.size) % times.size]
+    }
+
     /** Newest sample into [out]; returns its timestamp, or `Long.MIN_VALUE` when empty. */
     fun latest(out: DoubleArray): Long = synchronized(lock) {
         if (size == 0) return@synchronized Long.MIN_VALUE

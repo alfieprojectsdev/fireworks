@@ -22,7 +22,8 @@ import kotlin.math.sin
  * disturbances are averaged away; a real heading change still converges in a
  * few seconds.
  *
- * Output is device->ENU. Single-threaded: the sensor thread owns it.
+ * Output is device->ENU. The sensor thread owns it; only [mode] is read from
+ * elsewhere (the HUD), hence volatile.
  */
 class HeadingFusion(private val tauSeconds: Double = 2.0) {
 
@@ -38,6 +39,7 @@ class HeadingFusion(private val tauSeconds: Double = 2.0) {
     private var yawCorrection = 0.0
     private var lastAbsNanos = Long.MIN_VALUE
 
+    @Volatile
     var mode = Mode.NONE
         private set
 

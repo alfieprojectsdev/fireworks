@@ -61,7 +61,7 @@ constants and formulas, ported line for line and covered by a `:core` test.
 | Web | Native | Notes |
 |---|---|---|
 | Triple-tap top-right 100 px, 600 ms window, 60 ms tick, [40, 60, 120] confirm | `MultiTapDetector`, `Haptics` | Same. |
-| Test mode: group at (0, 15, -40) | director `start(testMode)` | **Changed:** 40 m along the camera's current heading, not always north. The README said "straight ahead", and only facing north matched that. |
+| Test mode: group at (0, 15, -40) | director `start(testMode)`, `PoseGate` | **Changed:** 40 m along the camera's current heading, not always north. The README said "straight ahead", and only facing north matched that. The start waits (up to 2 s) for a compass-corrected heading, because a launch-intent start runs before any sensor sample arrives. |
 | Camera failure copy, "tap three times to skip" | `showCameraFailure`, `onSecretTap` | Same copy. The triple-tap now actually skips (hides the splash). In the web build it did nothing once the experience had started. |
 | Compass banner: calibrating, locked or active, 8 s bound | `CompassBanner` | Same states and timings. **New:** "needs calibration (figure-8)" when the compass reports itself unreliable. |
 | Debug HUD, triple-tap bottom-right 80 px | `HudFormatter`, `debug_hud` | Same lines, plus fps, camera fps, photon age, pose mode and lag, heading source, FOV. The HUD sits above the toggle's hit area. In the web build the toggle covered the Export link. |

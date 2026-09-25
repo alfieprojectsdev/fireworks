@@ -47,6 +47,7 @@ import dev.alfieprojects.mirroredlotus.core.ui.DistanceHint
 import dev.alfieprojects.mirroredlotus.core.ui.HudFormatter
 import dev.alfieprojects.mirroredlotus.core.ui.MultiTapDetector
 import dev.alfieprojects.mirroredlotus.core.ui.PerfSnapshot
+import dev.alfieprojects.mirroredlotus.core.ui.PoseGate
 import dev.alfieprojects.mirroredlotus.export.SessionExporter
 import dev.alfieprojects.mirroredlotus.gl.ArRenderer
 import dev.alfieprojects.mirroredlotus.gl.MsaaConfigChooser
@@ -85,6 +86,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private val banner = CompassBanner()
     private val secretTaps = MultiTapDetector()
     private val hudTaps = MultiTapDetector()
+    private val testModeGate = PoseGate()
 
     private lateinit var orientation: OrientationSource
     private lateinit var locationFeed: LocationFeed
@@ -117,6 +119,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private var shownBanner: CompassBanner.State? = null
     private var lastHudAt = 0L
     private val enuScratch = DoubleArray(4)
+    private val sceneScratch = DoubleArray(4)
+    private val fwdScratch = DoubleArray(3)
 
     private class Fix(val lat: Double, val lng: Double, val accuracy: Double?, val source: String)
 
@@ -199,6 +203,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     override fun onDestroy() {
+        cameraFeed.release()
         earphones.unregister()
         super.onDestroy()
     }
@@ -291,10 +296,29 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     // ---- the experience -----------------------------------------------------
 
+    /**
+     * Test mode places the monument along the camera's heading, so it waits
+     * (up to 2 s, see [PoseGate]) for a compass-corrected orientation. From a
+     * launch intent this runs in onCreate, before the sensors have even started.
+     */
     private fun startTestMode() {
         if (experienceStarted) return
+        testModeGate.request(System.currentTimeMillis())
+        maybeStartTestMode()
+    }
+
+    private fun maybeStartTestMode() {
+        if (experienceStarted || !testModeGate.poll(System.currentTimeMillis(), orientation.headingReady)) return
         val site = Sites.ALL.first() // test mode previews the primary site, as before
         startExperience(site, site.lat, site.lng, test = true)
+    }
+
+    /** Camera forward (scene axes, x and z) from the newest orientation; north when there is none. */
+    private fun currentForward(): Pair<Double, Double> {
+        if (history.latest(enuScratch) == Long.MIN_VALUE) return 0.0 to -1.0
+        Frames.enuToScene(enuScratch, sceneScratch)
+        Frames.forward(sceneScratch, fwdScratch)
+        return fwdScratch[0] to fwdScratch[2]
     }
 
     private fun startExperience(site: Site, lat: Double, lng: Double, test: Boolean) {
@@ -322,8 +346,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             pylons = stats.pylonTexts().map { TextTextures.pylon(it, maxTex) },
             message = TextTextures.message(AnniversaryStats.messageLine(site.anchor, now)),
         )
-        val fwdX = renderer.telemetry.fwdX
-        val fwdZ = renderer.telemetry.fwdZ
+        val (fwdX, fwdZ) = currentForward()
         glView.queueEvent {
             renderer.setSceneTextures(textures)
             director.start(site, lat, lng, test, fwdX, fwdZ)
@@ -343,6 +366,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             override fun onConfigured(config: CameraFeed.Config) {
                 Log.i(TAG, "camera ${config.description}")
                 renderer.setCameraConfig(config)
+                ui.post { onCameraRecovered() }
             }
 
             override fun onError(message: String) {
@@ -358,6 +382,15 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         splash.animate().cancel()
         splash.visibility = View.VISIBLE
         splash.alpha = 1f
+    }
+
+    /** A later open succeeded: take down the failure splash so it can't cover a working feed. */
+    private fun onCameraRecovered() {
+        if (!cameraFailed) return
+        cameraFailed = false
+        splash.animate().cancel()
+        splash.visibility = View.GONE
+        arrowFloat?.cancel()
     }
 
     private fun onAct(event: ActEvent, distanceM: Double) {
@@ -465,6 +498,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private val uiTick = object : Runnable {
         override fun run() {
             val now = System.currentTimeMillis()
+            if (testModeGate.pending) maybeStartTestMode()
             if (experienceStarted) {
                 if (orientation.lastAbsoluteAtMs > 0) {
                     banner.onOrientation(now, absolute = true, good = orientation.headingGood())
@@ -564,9 +598,12 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // singleTask: a second `am start --ez testMode true` reaches us here.
+        // singleTask: a second `am start` without -S reaches us here. Only the
+        // switches that can change at runtime are honoured; simulate and
+        // headingTau need a fresh start (`am start -S`, as the deploy scripts do).
         if (intent.getBooleanExtra("testMode", false)) startTestMode()
         if (intent.getBooleanExtra("hud", false)) hud.visibility = View.VISIBLE
+        if (intent.hasExtra("syncCamera")) renderer.syncToCamera = intent.getBooleanExtra("syncCamera", true)
     }
 
     private companion object {

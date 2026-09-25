@@ -93,6 +93,8 @@ class ArRenderer(
     @Volatile private var cameraConfig: CameraFeed.Config? = null
     private var fitFor: CameraFeed.Config? = null
     private var fit: ViewFit? = null
+    /** Set on resize: the fit depends on the viewport as well as the camera config. */
+    private var fitDirty = true
 
     private val sampler = PoseSampler(history)
     /**
@@ -216,7 +218,7 @@ class ArRenderer(
         viewportW = maxOf(1, width)
         viewportH = maxOf(1, height)
         GLES30.glViewport(0, 0, viewportW, viewportH)
-        fitFor = null // recompute against the new viewport
+        fitDirty = true // recompute against the new viewport, camera or not
     }
 
     override fun onDrawFrame(unused: GL10?) {
@@ -310,7 +312,7 @@ class ArRenderer(
             Mat4.identity(view)
         }
         val config = cameraConfig
-        if (fit == null || fitFor !== config) {
+        if (fitDirty || fit == null || fitFor !== config) {
             val intrinsics = config?.intrinsics ?: CameraIntrinsics.fallback()
             val sw = config?.streamWidth ?: 1920
             val sh = config?.streamHeight ?: 1080
@@ -318,6 +320,7 @@ class ArRenderer(
                 telemetry.viewDescription = String.format(Locale.US, "vfov %.1f° hfov %.1f°", it.verticalFovDeg, it.horizontalFovDeg)
             }
             fitFor = config
+            fitDirty = false
         }
         val f = fit!!
         Mat4.perspective(proj, f.fxNdc, f.fyNdc, NEAR, FAR)
