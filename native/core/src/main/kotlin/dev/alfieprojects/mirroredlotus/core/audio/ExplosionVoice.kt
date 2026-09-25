@@ -60,12 +60,24 @@ class ExplosionVoice(private val sampleRate: Int) {
     private val crackleLen = (0.06 * sampleRate).toInt()
 
     private var end = 0
-    private val noise = Rng(0x5eed)
+    // xorshift32 white noise: a few integer ops a sample on the audio thread.
+    // Reseeded per burst, so two bursts that go off together aren't the same noise.
+    private var noiseState = 0x5eed
+
+    private fun white(): Float {
+        var x = noiseState
+        x = x xor (x shl 13)
+        x = x xor (x ushr 17)
+        x = x xor (x shl 5)
+        noiseState = x
+        return x * (1f / 2_147_483_648f) // [-1, 1)
+    }
 
     fun trigger(shell: Int, earphones: Boolean, px: Float, py: Float, pz: Float, rng: Rng) {
         this.shell = shell
         x = px; y = py; z = pz
         n = 0
+        noiseState = rng.nextLong().toInt() or 1 // xorshift must not start at 0
         shadowL = 0f; shadowR = 0f
         gainL = -1f; gainR = -1f // "not yet panned": the mixer jumps straight to the target
 
@@ -131,13 +143,13 @@ class ExplosionVoice(private val sampleRate: Int) {
                 if (thumpPhase >= 1.0) thumpPhase -= 1.0
                 if (n < thumpGlideSamples) thumpFreq *= thumpFreqFactor
             }
-            val white = (noise.nextFloat() * 2f - 1f)
+            val white = white()
             if (n < bodyEnd) s += bodyFilter.process(white) * bodyGain.next()
             if (n < sizzleEnd) s += sizzleFilter.process(white) * sizzleGain.next()
             for (k in 0 until crackles) {
                 val start = crackleStart[k]
                 if (n >= start && n < start + crackleLen) {
-                    s += (noise.nextFloat() * 2f - 1f) * crackleLevel[k]
+                    s += white() * crackleLevel[k]
                     if (crackleLevel[k] > 0.001f) crackleLevel[k] *= crackleFactor[k]
                 }
             }

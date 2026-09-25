@@ -1,4 +1,6 @@
-# Windows twin of deploy.sh: build, install and launch on the connected phone.
+# Windows twin of deploy.sh: build the field APK (non-debuggable), install and
+# launch it on the connected phone. $env:LOTUS_VARIANT = "debug" installs the
+# debuggable build instead (for a debugger; it runs at about half speed).
 #   .\scripts\deploy.ps1 --ez testMode true --ez hud true
 #   .\scripts\deploy.ps1 --es simulate church --ef simSpeed 20 --ez hud true
 # Connect first (wireless debugging): adb connect <ip>:<port>
@@ -32,9 +34,11 @@ function Resolve-Adb {
 $adb = Resolve-Adb
 Write-Host ">> using $adb"
 
-& .\gradlew.bat :app:assembleDebug
+$variant = if ($env:LOTUS_VARIANT) { $env:LOTUS_VARIANT } else { "field" }
+$task = "assemble" + $variant.Substring(0, 1).ToUpper() + $variant.Substring(1)
+& .\gradlew.bat ":app:$task"
 if ($LASTEXITCODE -ne 0) { throw "Gradle build failed" }
-& $adb install -r app\build\outputs\apk\debug\app-debug.apk
+& $adb install -r "app\build\outputs\apk\$variant\app-$variant.apk"
 if ($LASTEXITCODE -ne 0) { throw "adb install failed" }
 & $adb shell am force-stop dev.alfieprojects.mirroredlotus
 & $adb shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity @args

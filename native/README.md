@@ -14,8 +14,9 @@ sensors read directly at 200 Hz.
 
 ```bash
 ./gradlew :core:test            # 138 JVM tests - no Android SDK needed
-./gradlew :app:assembleDebug    # needs the SDK (local.properties sdk.dir or ANDROID_HOME)
-./gradlew :app:connectedDebugAndroidTest   # on-device smoke tests (phone connected)
+./gradlew :app:assembleField    # the build for phones: non-debuggable, full speed (needs the SDK)
+./gradlew :app:assembleDebug    # debuggable, for a debugger - runs at about half speed on the A07
+./gradlew :app:connectedFieldAndroidTest   # on-device smoke tests (phone connected)
 ```
 
 `:app` is only configured when an Android SDK is found (the stable-still rule),
@@ -30,6 +31,11 @@ scripts/deploy.sh --ez testMode true --ez hud true     # Git Bash / Linux / macO
 .\scripts\deploy.ps1 --ez testMode true --ez hud true  # PowerShell
 scripts/serve-apk.sh                                   # WiFi sideload, like ../serve_apk.sh
 ```
+
+All three install the non-debuggable `field` build; `LOTUS_VARIANT=debug`
+switches the deploy scripts to the debuggable one. Every build is signed with
+the committed `debug.keystore`, so installs from any machine update each other.
+It is a debug key and must never sign a release.
 
 The app installs as **Lotus Native** (`dev.alfieprojects.mirroredlotus`),
 alongside the Capacitor build (`com.alfie.anniversary`), so they can be

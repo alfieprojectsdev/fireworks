@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Build the debug APK, install it on the connected phone and launch it.
+# Build the field APK (non-debuggable, see app/build.gradle.kts), install it on
+# the connected phone and launch it. LOTUS_VARIANT=debug installs the
+# debuggable build instead (for a debugger; it runs at about half speed).
 # Any extra arguments are passed to `am start` as launch switches, e.g.
 #   scripts/deploy.sh --ez testMode true --ez hud true
 #   scripts/deploy.sh --es simulate church --ef simSpeed 20 --ez hud true
@@ -31,8 +33,10 @@ resolve_adb() {
 ADB=$(resolve_adb)
 echo ">> using $ADB"
 
-./gradlew :app:assembleDebug
-"$ADB" install -r app/build/outputs/apk/debug/app-debug.apk
+VARIANT="${LOTUS_VARIANT:-field}"
+TASK="assemble$(printf '%s' "${VARIANT:0:1}" | tr '[:lower:]' '[:upper:]')${VARIANT:1}"
+./gradlew ":app:$TASK"
+"$ADB" install -r "app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
 "$ADB" shell am force-stop dev.alfieprojects.mirroredlotus || true
 "$ADB" shell am start -n dev.alfieprojects.mirroredlotus/.MainActivity "$@"
 echo ">> logs: \"$ADB\" logcat -s Lotus LotusProbe LotusCamera LotusRenderer LotusAudio LotusLocation"

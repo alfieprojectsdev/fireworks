@@ -110,6 +110,7 @@ class Compressor(
     private val attack = exp(-1.0 / (attackSeconds * sampleRate)).toFloat()
     private val release = exp(-1.0 / (releaseSeconds * sampleRate)).toFloat()
     private var envDb = 0f
+    private val kneeStartLinear = 10f.pow((thresholdDb - kneeDb / 2) / 20)
 
     /** Current gain reduction in dB (<= 0), for tests and meters. */
     val reductionDb: Float get() = envDb
@@ -129,9 +130,18 @@ class Compressor(
     /** Processes one stereo frame in place in [buf] at [i] (interleaved L, R). */
     fun process(buf: FloatArray, i: Int) {
         val peak = maxOf(kotlin.math.abs(buf[i]), kotlin.math.abs(buf[i + 1]), 1e-9f)
-        val inDb = 20 * log10(peak)
-        val want = staticCurveDb(inDb) - inDb
+        // Below the knee the curve asks for exactly 0 dB, so the per-sample
+        // log10/pow are only paid while compressing or releasing - most of the time
+        // the bus is quieter than that.
+        val want = if (peak < kneeStartLinear) 0f else {
+            val inDb = 20 * log10(peak)
+            staticCurveDb(inDb) - inDb
+        }
         envDb = if (want < envDb) attack * envDb + (1 - attack) * want else release * envDb + (1 - release) * want
+        if (envDb > -1e-4f) {
+            envDb = 0f // released: unity gain, nothing to do
+            return
+        }
         val g = 10f.pow(envDb / 20)
         buf[i] *= g
         buf[i + 1] *= g

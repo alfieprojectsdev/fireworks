@@ -1,21 +1,38 @@
 # Handover
 
-The current state and the next action. Written at the end of the cloud session
-that built the port (25 September 2026) for the local session with the laptop
-and phones.
+The current state and the next action. Written by the cloud session that built
+the port (25 September 2026), updated with the laptop session's first A07 results.
 
 ## State in one table
 
 | | State |
 |---|---|
 | `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 138 JVM tests passing** |
-| GLSL shaders | **Validated** with glslang 15 (`ShaderSourcesTest`) |
-| `:app` debug APK | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors |
-| Instrumented tests (`DeviceSmokeTest`) | **Compile**. Not run yet: they need a phone |
-| On a real phone | **Not yet run.** The cloud box has no GPU, camera or KVM |
+| GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
+| `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
+| `DeviceSmokeTest` on the A07 | Shaders, sensor rate and camera **pass**. Audio budget failed on the debuggable build; now measured warm on the field build (re-run pending) |
+| On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
+| Still to do | Pan swim test, heading check, walk-in, the A56, and the mirrored-glyph check below |
 
-Everything that could be verified without hardware has been. The rest is the
-local session's job, in the order below.
+## Always install the `field` build
+
+A debuggable APK runs under ART's debug mode. On the A07 the same code gave:
+
+| Build | Render | Camera | Photon age | Pose lag |
+|---|---|---|---|---|
+| `debug` (debuggable) | 31.5 fps | 14.6 fps | 155 ms | 146 ms |
+| `field` (not debuggable) | 58.6 fps | 29.7 fps | 58 ms | 53 ms |
+
+`field` is `debug` with `isDebuggable = false`. It has the same app id and the
+same committed signing key (`native/debug.keystore`), so either build replaces
+the other. The deploy and serve scripts install `field`. Set
+`LOTUS_VARIANT=debug` only when you need a debugger. Instrumented tests also
+run against `field` by default (`-Plotus.testBuildType=debug` for the other).
+
+The committed key means builds from the laptop, the cloud and any clone can
+all update each other. **One-time step:** the copy on the A07 was signed with
+the laptop's own key, so uninstall it once before the first install from this
+commit.
 
 ## Do this first (local session, Windows laptop `admin@REESE`)
 
@@ -28,7 +45,7 @@ when it opens the `native/` folder. Otherwise, create it with
 ```powershell
 cd fireworks\native
 .\gradlew.bat :core:test          # 138 tests, ~10 s
-.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:assembleField
 ```
 
 **2. Connect the A07.** It is already paired with this laptop. Its wireless
@@ -46,11 +63,25 @@ adb devices
 deploy scripts find it through `sdk.dir` or `ANDROID_HOME`; for manual commands,
 add that folder to PATH or call it by full path.
 
+Wireless adb snags the laptop session hit:
+
+- **Paired but untrusted.** The phone listed `admin@REESE` under paired
+  devices, yet the connection failed with `SSLV3_ALERT_CERTIFICATE_UNKNOWN` in
+  `%TEMP%\adb.log`. Fix: pair again with a pairing code
+  (`adb pair <ip>:<pairing port>`).
+- **The phone appears twice.** After pairing, mDNS adds a second transport
+  for the same phone (`adb-<serial>._adb-tls-connect._tcp`), and Gradle then runs
+  every instrumented test twice. Set `ANDROID_SERIAL` to one of them, or
+  `adb disconnect` the mDNS entry.
+- **Secure Folder.** The A07 has a Secure Folder user (150). `pm list packages`
+  without `--user 0` errors on it, and adb can't uninstall from it: an app copy
+  there has to be removed by hand on the phone.
+
 **3. Run the on-device checks.** These cover what the JVM can't: shaders
 compiling on the Mali GPU, sensor rates, camera facts, and audio render time.
 
 ```powershell
-.\gradlew.bat :app:connectedDebugAndroidTest
+.\gradlew.bat :app:connectedFieldAndroidTest
 adb logcat -d -s LotusSmoke
 ```
 
@@ -62,8 +93,43 @@ so everything is driven by launch switches:
 adb logcat -d -s LotusProbe Lotus LotusCamera
 ```
 
-Paste the `LotusProbe` lines into this file (camera timestamp source, sensor
-names and rates, refresh rate). Then do the same on the **A56**.
+Paste the `LotusProbe` lines below. Then do the same on the **A56**.
+
+### Galaxy A07 5G (SM-A076B), 25 September 2026
+
+```
+device samsung SM-A076B (a07x) Android 16 API 36
+display refresh 120.0 Hz (modes: 120, 90, 60)
+sensor android.sensor.game_rotation_vector: game_rotvec / mtk minDelay=5000us fifo=4500
+sensor android.sensor.rotation_vector: rot_vec / mtk minDelay=5000us fifo=4500
+sensor android.sensor.gyroscope: bmi3xy gyro / bosch minDelay=5000us fifo=4500
+sensor android.sensor.magnetic_field: qmc6308 / qst minDelay=20000us fifo=4500
+camera 0 back: ts=REALTIME focal=[3.98]mm sensor=5.22x3.93mm orientation=90 ois=[0] fps=[[10, 10], [15, 15], [15, 20], [20, 20], [24, 24], [5, 30], [30, 30]]
+app: camera cam 0 1280x720 @30-30 f=3.98mm ts=REALTIME
+smoke: orientation game+mag at 201.3 Hz; GL Mali-G57 MC2 / OpenGL ES 3.2 v1.r38p1
+```
+
+Every assumption the design rests on held:
+- the camera clock is REALTIME
+- a fixed [30, 30] fps range is offered
+- 200 Hz rotation vectors are delivered
+- the SurfaceTexture transform includes the 90 degree sensor rotation (the picture is upright and not mirrored)
+- the lens-derived 66.5 degree field matches
+
+**Audio budget.** 15 voices, one cold second of audio: 830-4650 ms debuggable,
+173-301 ms non-debuggable. On the JVM, the same second costs 78 ms cold and 22 ms
+warm. The cold second is mostly ART warming up, and the app's audio thread is
+warm long before the first burst. The smoke test now logs the cold second and
+judges a warm one on the field build. Compressor idle work and the noise
+generator were also made cheaper. Re-run it to get the warm A07 figure.
+
+**Open question: mirrored glyphs.** In a test-mode screenshot, the crown and
+one pylon showed mirrored text. That is most likely the far side seen through
+the geometry: every material is double-sided and additive with no depth test,
+exactly as in the web build, so the back of the crown and a pylon facing away
+read backwards. Compare against the web build side by side. If the native build
+matches, fading back faces (via `gl_FrontFacing` in `mesh.frag`) is a small
+change, but it's a design decision.
 
 ## What to look at first on the phone, and what to try if it's wrong
 

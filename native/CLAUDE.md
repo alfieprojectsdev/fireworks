@@ -7,9 +7,9 @@ Read `docs/HANDOVER.md` first for the current state and next action.
 
 ```bash
 ./gradlew :core:test            # JVM only, no SDK needed - run after every change to core/
-./gradlew :app:assembleDebug    # needs an Android SDK
+./gradlew :app:assembleField    # what goes on phones (non-debuggable); needs an Android SDK
 ./gradlew :app:lintDebug
-./gradlew :app:connectedDebugAndroidTest   # phone attached
+./gradlew :app:connectedFieldAndroidTest   # phone attached; tests run against `field`
 ```
 
 ## The rule
@@ -38,6 +38,9 @@ AudioTrack, Views) and routes events into `:core`.
 - **Parity.** Constants and formulas mirror `../public/js/*.js`. Change them
   deliberately and record it in `docs/PARITY.md`. Any function that maps a
   distance through cascading comparisons gets a test at every band edge.
+- **Never judge performance on a debuggable build.** ART's debug mode halved
+  the A07's frame rate and tripled its latency. Use `field`, which the deploy
+  scripts and the instrumented tests already do.
 - **Shaders** live in `core/src/main/resources/shaders/`. `ShaderSourcesTest`
   compiles them with glslang when it's installed and checks the uniform names
   `ArRenderer` binds.

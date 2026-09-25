@@ -32,12 +32,41 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // A committed debug key, so a build from the laptop, the cloud or any
+        // clone can update an install from any other. Per-machine debug keys made
+        // installs fail with INSTALL_FAILED_UPDATE_INCOMPATIBLE. Debug and field
+        // builds only; it must never sign a release.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        // What goes on the phone for field tests. A debuggable build runs under
+        // ART's debug mode. On the A07 that halved the frame rate and tripled the
+        // photon age (31 fps / 155 ms against 59 fps / 58 ms for the same code).
+        // Same app id and key as debug, so either replaces the other.
+        create("field") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            versionNameSuffix = "-field"
+            matchingFallbacks += "debug"
+        }
     }
+
+    // Instrumented tests run against the field build by default, so
+    // DeviceSmokeTest's timing checks measure what the phone will actually run.
+    // `-Plotus.testBuildType=debug` tests the debuggable build instead.
+    testBuildType = providers.gradleProperty("lotus.testBuildType").getOrElse("field")
 
     buildFeatures {
         buildConfig = true

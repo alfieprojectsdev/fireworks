@@ -126,8 +126,9 @@ class SpatialMixer(
             val leftIsFar = tr > tl
             var sL = v.shadowL
             var sR = v.shadowR
+            val invN = 1f / n
             for (i in 0 until n) {
-                val u = (i + 1).toFloat() / n
+                val u = (i + 1) * invN
                 val s = mono[i]
                 var l = s * (gl0 + (tl - gl0) * u)
                 var r = s * (gr0 + (tr - gr0) * u)
