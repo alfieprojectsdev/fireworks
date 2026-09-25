@@ -41,6 +41,11 @@ adb connect 100.79.189.46:<port from the Wireless debugging screen>
 adb devices
 ```
 
+`adb` isn't on PATH on this laptop. It lives at
+`C:\Users\admin\AppData\Local\Android\Sdk\platform-tools\adb.exe`. The
+deploy scripts find it through `sdk.dir` or `ANDROID_HOME`; for manual commands,
+add that folder to PATH or call it by full path.
+
 **3. Run the on-device checks.** These cover what the JVM can't: shaders
 compiling on the Mali GPU, sensor rates, camera facts, and audio render time.
 
