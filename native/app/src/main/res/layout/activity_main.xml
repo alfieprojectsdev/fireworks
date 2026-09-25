@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One GL surface draws camera and overlay together; plain Views on top carry
+     only the splash and the small controls, as #ui-layer did in the web build. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <android.opengl.GLSurfaceView
+        android:id="@+id/ar_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/splash"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp">
+
+        <TextView
+            android:id="@+id/splash_arrow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:alpha="0.6"
+            android:text="@string/splash_arrow"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/splash_arrow_text" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp"
+            android:fontFamily="sans-serif-thin"
+            android:letterSpacing="0.18"
+            android:text="@string/splash_headline"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/splash_headline_text" />
+
+        <TextView
+            android:id="@+id/status_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:alpha="0.45"
+            android:fontFamily="sans-serif"
+            android:gravity="center"
+            android:letterSpacing="0.08"
+            android:text="@string/status_locating"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/status_text" />
+
+        <TextView
+            android:id="@+id/build_version"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:alpha="0.2"
+            android:fontFamily="monospace"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/version_text" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/compass_indicator"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="@dimen/compass_margin"
+        android:alpha="0"
+        android:fontFamily="monospace"
+        android:letterSpacing="0.06"
+        android:textColor="@color/lotus_white"
+        android:textSize="@dimen/compass_text" />
+
+    <TextView
+        android:id="@+id/audio_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="@dimen/edge_margin"
+        android:alpha="0.55"
+        android:contentDescription="@string/audio_mode_description"
+        android:padding="8dp"
+        android:text="@string/audio_mode_speaker"
+        android:textColor="@color/lotus_white"
+        android:textSize="@dimen/audio_button_text" />
+
+    <!-- The HUD sits above the 80dp toggle corner, so its export control can
+         never be covered by the toggle's hit area (it could in the web build). -->
+    <LinearLayout
+        android:id="@+id/debug_hud"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="@dimen/edge_margin"
+        android:layout_marginBottom="96dp"
+        android:background="@drawable/hud_background"
+        android:gravity="end"
+        android:orientation="vertical"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="6dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/hud_lines"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="monospace"
+            android:gravity="end"
+            android:lineSpacingMultiplier="1.3"
+            android:text="@string/hud_acquiring"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/hud_text" />
+
+        <TextView
+            android:id="@+id/hud_export"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:alpha="0.8"
+            android:fontFamily="monospace"
+            android:paddingTop="6dp"
+            android:text="@string/hud_export"
+            android:textColor="@color/lotus_white"
+            android:textSize="@dimen/hud_text" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/secret_override"
+        android:layout_width="@dimen/secret_override_size"
+        android:layout_height="@dimen/secret_override_size"
+        android:layout_gravity="top|end" />
+
+    <View
+        android:id="@+id/hud_toggle"
+        android:layout_width="@dimen/hud_toggle_size"
+        android:layout_height="@dimen/hud_toggle_size"
+        android:layout_gravity="bottom|end" />
+</FrameLayout>

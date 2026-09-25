@@ -1,0 +1,16 @@
+# Gradle / build
+.gradle/
+build/
+local.properties
+*.hprof
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+
+# Kotlin incremental compilation metadata
+.kotlin/
+
+# Built APKs are never committed; scripts/serve-apk.sh serves them over WiFi
+*.apk

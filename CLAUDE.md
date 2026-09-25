@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A GPS-triggered AR anniversary app deployed as an Android APK via Capacitor. When the user is within 100 meters of a specific church in Manila (14.658888, 121.071173), the app activates a Three.js AR scene overlaid on the camera feed, showing fireworks and a spinning cylindrical marquee anchored to the church's physical location. The occasion: May 15, 2008 (wedding anniversary with "Bhaze").
 
+## Native port (`native/`)
+
+`native/` is a separate Gradle project: a native Kotlin + GLES 3 + Camera2 port of this experience, built to remove the WebView build's field latency. It has the same sites, acts, monument, fireworks and audio. Camera and overlay are drawn in one GL pass, posed at the camera frame's exposure instant, from 200 Hz rotation vectors. It installs as **Lotus Native** (`dev.alfieprojects.mirroredlotus`), side by side with this Capacitor app, which stays as the A/B reference and the rollback.
+
+- Work in `native/` follows `native/CLAUDE.md` (the `:core`-with-tests rule, frame and pose-timing landmines).
+- `./gradlew :core:test` (from `native/`) runs the JVM tests with no Android SDK. The current state and the next on-device steps are in `native/docs/HANDOVER.md`.
+- Behaviour changes to the web build's story (sites, act distances, fireworks, audio constants) should be mirrored in `native/core` and recorded in `native/docs/PARITY.md`, or the two builds drift.
+
 ## Build & Deploy
 
 The entire build-and-deploy workflow is:
