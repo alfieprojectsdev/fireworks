@@ -10,7 +10,7 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 | `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 142 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
-| `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build, three runs of three (on `4e59787`). Re-run once on `5859d1f` to compile the back-face shader on Mali |
+| `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build: three runs on `4e59787` and one on `fbc7c77`, which includes the back-face shader (`gl_FrontFacing`, `discard`, `uBackFaces`), compiled and linked on the Mali-G57 with `GL_NO_ERROR` |
 | On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
 | Still to do | Pan swim test, heading check, walk-in, back-face check on the phone, side-by-side with the web build, the A56 |
 
@@ -122,7 +122,7 @@ Every assumption the design rests on held:
 |---|---|---|
 | debuggable, before `4e59787` | 830-4650 ms | not measured |
 | non-debuggable, before `4e59787` | 173-301 ms | not measured |
-| field, `4e59787` (3 runs) | 89-159 ms | **28-36 ms** |
+| field, `4e59787` and `fbc7c77` (4 runs) | 89-159 ms | **28-36 ms** |
 
 Warm is about 3% of real time: roughly 30x headroom on the A07, and about 1.3x
 the JVM figure (22 ms). The cold second is mostly ART warm-up, and the first
