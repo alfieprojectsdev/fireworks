@@ -10,9 +10,9 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 | `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 142 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
-| `DeviceSmokeTest` on the A07 | Shaders, sensor rate and camera **pass**. Audio budget failed on the debuggable build; now measured warm on the field build (re-run pending) |
+| `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build, three runs of three (on `4e59787`). Re-run once on `5859d1f` to compile the back-face shader on Mali |
 | On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
-| Still to do | Pan swim test, heading check, walk-in, the A56, and the mirrored-glyph check below |
+| Still to do | Pan swim test, heading check, walk-in, back-face check on the phone, side-by-side with the web build, the A56 |
 
 ## Always install the `field` build
 
@@ -116,12 +116,18 @@ Every assumption the design rests on held:
 - the SurfaceTexture transform includes the 90 degree sensor rotation (the picture is upright and not mirrored)
 - the lens-derived 66.5 degree field matches
 
-**Audio budget.** 15 voices, one cold second of audio: 830-4650 ms debuggable,
-173-301 ms non-debuggable. On the JVM, the same second costs 78 ms cold and 22 ms
-warm. The cold second is mostly ART warming up, and the app's audio thread is
-warm long before the first burst. The smoke test now logs the cold second and
-judges a warm one on the field build. Compressor idle work and the noise
-generator were also made cheaper. Re-run it to get the warm A07 figure.
+**Audio budget.** 15 voices (the spawner's ceiling), one second of audio:
+
+| Build | Cold | Warm |
+|---|---|---|
+| debuggable, before `4e59787` | 830-4650 ms | not measured |
+| non-debuggable, before `4e59787` | 173-301 ms | not measured |
+| field, `4e59787` (3 runs) | 89-159 ms | **28-36 ms** |
+
+Warm is about 3% of real time: roughly 30x headroom on the A07, and about 1.3x
+the JVM figure (22 ms). The cold second is mostly ART warm-up, and the first
+run after an install is the slowest. The app's audio thread is warm long
+before the first burst.
 
 **Mirrored glyphs: decided.** A test-mode screenshot showed the crown's far
 side and a pylon's back reading mirrored, because every material is double-sided
