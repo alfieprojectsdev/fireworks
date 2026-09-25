@@ -13,6 +13,7 @@ import dev.alfieprojects.mirroredlotus.core.orientation.HeadingFusion
 import dev.alfieprojects.mirroredlotus.core.orientation.OrientationHistory
 import dev.alfieprojects.mirroredlotus.core.telemetry.RateMeter
 import dev.alfieprojects.mirroredlotus.core.track.StepDetector
+import dev.alfieprojects.mirroredlotus.core.track.SwingGate
 import dev.alfieprojects.mirroredlotus.core.track.WalkHeading
 import dev.alfieprojects.mirroredlotus.core.ui.HeadingQuality
 
@@ -39,8 +40,10 @@ class OrientationSource(
     private val accelerometer: Sensor? = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
 
     // Pedestrian dead reckoning: footsteps from the accelerometer, each one
-    // pointed along the fused (gyro-locked, north-anchored) facing.
+    // pointed along the fused (gyro-locked, north-anchored) facing. The swing
+    // gate drops the "steps" that whipping the phone round would add.
     private val steps = StepDetector()
+    private val swing = SwingGate()
     private val facing = DoubleArray(2)
     private val latestEnu = doubleArrayOf(1.0, 0.0, 0.0, 0.0)
 
@@ -124,6 +127,7 @@ class OrientationSource(
         }
         // Footsteps are a ~2 Hz bounce; 50 Hz resolves them comfortably.
         steps.reset()
+        swing.reset()
         accelerometer?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME, h) }
     }
 
@@ -136,9 +140,12 @@ class OrientationSource(
     override fun onSensorChanged(event: SensorEvent) {
         if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             val v = event.values
-            if (steps.onSample(event.timestamp, v[0].toDouble(), v[1].toDouble(), v[2].toDouble()) &&
-                WalkHeading.of(latestEnu, facing)
-            ) onStep?.invoke(facing[0], facing[1])
+            val t = event.timestamp
+            val credit = steps.onSample(t, v[0].toDouble(), v[1].toDouble(), v[2].toDouble(), swing.swinging(t))
+            if (credit > 0 && WalkHeading.of(latestEnu, facing)) {
+                val listener = onStep ?: return
+                repeat(credit) { listener(facing[0], facing[1]) }
+            }
             return
         }
         Frames.rotationVectorToQuat(event.values, event.values.size, rawQ)
@@ -155,6 +162,7 @@ class OrientationSource(
         }
         if (publish) {
             latestEnu[0] = outQ[0]; latestEnu[1] = outQ[1]; latestEnu[2] = outQ[2]; latestEnu[3] = outQ[3]
+            swing.onOrientation(event.timestamp, outQ)
             history.push(event.timestamp, outQ)
             rate.record(event.timestamp)
             // The first sample published after the compass correction exists

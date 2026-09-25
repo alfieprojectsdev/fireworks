@@ -13,7 +13,7 @@ constants and formulas, ported line for line and covered by a `:core` test.
 | Native FLP 1 Hz high accuracy, web geolocation fallback | `DeviceLocationFeed` | FLP 1 Hz as before. The fallback is now the platform GPS provider, used when Play services are missing. |
 | Distance hint: 10 m steps under 1 km, 0.1 km above | `DistanceHint` | Same, including JS number printing ("2km", not "2.0km"). |
 | Permission denied, unavailable, and timeout messages | `strings.xml`, `LocationProblem` | Same copy. **New:** "Location is off" when location services are disabled. The web build showed "Step outside for clearer sky" in that case. |
-| Geo re-anchoring on every fix, lerp 0.02 per tick | `ExperienceDirector.onLocation/tick`, `PositionTracker` | Same lerp. **Changed:** after the trigger, the anchor comes from GPS fused with footstep dead reckoning (accuracy-weighted, jump-gated) instead of each raw fix. Indoor GPS wander no longer drags the monument, and it stays put or follows your steps when GPS drops out. |
+| Geo re-anchoring on every fix, lerp 0.02 per tick | `ExperienceDirector.onLocation/tick`, `PositionTracker` | Same lerp. **Changed:** after the trigger, the anchor comes from GPS position and Doppler velocity, fused with footstep dead reckoning indoors (accuracy-weighted, jump-gated), instead of each raw fix. Indoor GPS wander no longer drags the monument, and it stays put or follows your steps when GPS drops out. |
 | `CHECKPOINTS` in the HUD | `Checkpoints` | Same. |
 
 ## Scene

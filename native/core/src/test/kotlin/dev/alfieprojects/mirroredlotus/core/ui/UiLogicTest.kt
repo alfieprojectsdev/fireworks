@@ -154,6 +154,11 @@ class UiLogicTest {
             "fused", 30.0, 0.0, 0.0, 12.0, 0.0, "church", null, null,
             TrackSnapshot(sigmaM = 4.4, steps = 37, rejectedFixes = 2, fusedDistanceM = 9.6),
         )
-        assertEquals("track: fused 10m ±4m  steps 37  gps-rej 2", lines[6])
+        assertEquals("track: fused 10m ±4m  by steps  steps 37  gps-rej 2", lines[6])
+        val outdoors = HudFormatter.lines(
+            "fused", 5.0, 0.0, 0.0, 120.0, 0.0, "church", null, null,
+            TrackSnapshot(sigmaM = 3.0, steps = 12, rejectedFixes = 0, fusedDistanceM = 118.0, speedMps = 1.36),
+        )
+        assertEquals("track: fused 118m ±3m  by gps 1.4m/s  steps 12  gps-rej 0", outdoors[6])
     }
 }

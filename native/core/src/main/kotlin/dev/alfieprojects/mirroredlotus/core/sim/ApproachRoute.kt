@@ -25,4 +25,10 @@ class ApproachRoute(
         Geo.destination(site.lat, site.lng, Math.toRadians(fromBearingDeg), distanceAt(elapsedSeconds))
 
     fun arrived(elapsedSeconds: Double): Boolean = distanceAt(elapsedSeconds) <= stopDistanceM
+
+    /** Ground speed, m/s: what a fix's Doppler speed would report. Zero once arrived. */
+    fun speedAt(elapsedSeconds: Double): Double = if (arrived(elapsedSeconds)) 0.0 else speedMps
+
+    /** Course over ground, degrees: toward the site. */
+    val headingDeg: Double get() = Geo.normaliseDeg(fromBearingDeg + 180.0)
 }

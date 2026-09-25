@@ -21,7 +21,10 @@ class TrackingTest {
      * Accelerometer at 50 Hz for [seconds]: gravity along a fixed tilted axis,
      * plus a bounce of [bounce] m/s^2 at [stepHz] along it, plus sensor noise.
      */
-    private fun countSteps(seconds: Double, stepHz: Double, bounce: Double, noise: Double = 0.25, seed: Long = 1): Long {
+    private fun countSteps(
+        seconds: Double, stepHz: Double, bounce: Double, noise: Double = 0.25, seed: Long = 1,
+        rotating: (Double) -> Boolean = { false },
+    ): Long {
         val d = StepDetector()
         val rng = Rng(seed)
         val ux = 0.3; val uy = 0.9; val uz = sqrt(1 - ux * ux - uy * uy) // phone held tilted
@@ -30,7 +33,7 @@ class TrackingTest {
             val s = t / 1e9
             val along = g + bounce * sin(2 * PI * stepHz * s)
             fun n() = (rng.nextDouble() - 0.5) * 2 * noise
-            d.onSample(t, ux * along + n(), uy * along + n(), uz * along + n())
+            d.onSample(t, ux * along + n(), uy * along + n(), uz * along + n(), rotating(s))
             t += 20_000_000L
         }
         return d.steps
@@ -47,6 +50,29 @@ class TrackingTest {
     fun `standing still or panning the phone is not walking`() {
         assertEquals(0L, countSteps(30.0, 1.8, 0.0, noise = 0.3)) // sensor noise only
         assertEquals(0L, countSteps(30.0, 0.4, 0.8))              // slow sway, below the threshold
+    }
+
+    @Test
+    fun `isolated jolts are not steps, a rhythm is`() {
+        val d = StepDetector()
+        var t = 0L
+        fun sample(a: Double) { d.onSample(t, 0.0, 0.0, g + a); t += 20_000_000L }
+        // Three single bumps, three seconds apart (bumping into a pew, say).
+        repeat(3) {
+            repeat(25) { sample(-1.0) }; repeat(5) { sample(3.0) }; repeat(120) { sample(0.0) }
+        }
+        assertEquals(0L, d.steps)
+        // Then two steps in rhythm: both credited when the second confirms the first.
+        repeat(2) { repeat(15) { sample(-1.0) }; repeat(15) { sample(2.5) } }
+        assertEquals(2L, d.steps)
+    }
+
+    @Test
+    fun `swinging the phone to follow a burst is not walking`() {
+        assertEquals(0L, countSteps(20.0, 1.8, 2.0, rotating = { true }))
+        // Walking, with a two-second swing in the middle: only the swing's steps are lost.
+        val n = countSteps(20.0, 1.8, 2.0, rotating = { it in 9.0..11.0 })
+        assertTrue("steps $n", n in 30L..34L)
     }
 
     @Test
@@ -179,6 +205,112 @@ class TrackingTest {
         var ms = 0L
         repeat(60) { ms += 1000; t.onFix(moved.lat, moved.lng, 10.0, ms) }
         assertTrue("error ${errorM(t, 15.0)}", errorM(t, 15.0) < 2.0)
+    }
+
+    /**
+     * Moving north at [speed] m/s with 1 Hz fixes (5 m accuracy, [noise] m of
+     * error) and no steps at all. Returns the worst lag after warm-up, the worst
+     * lag measured against 3-sigma, and whether it ever reset.
+     */
+    private fun ride(speed: Double, doppler: Boolean, noise: Double, seconds: Int = 120): Triple<Double, Double, Boolean> {
+        val t = PositionTracker()
+        val rng = Rng(21)
+        var worst = 0.0
+        var worstRatio = 0.0
+        var reset = false
+        for (s in 0..seconds) {
+            val truthN = -1500.0 + speed * s
+            val p = at(truthN + (rng.nextDouble() - 0.5) * 2 * noise, (rng.nextDouble() - 0.5) * 2 * noise)
+            val sp = if (doppler) speed + (rng.nextDouble() - 0.5) * 0.4 else null
+            val result = t.onFix(p.lat, p.lng, 5.0, s * 1000L, sp, if (doppler) 0.0 else null, if (doppler) 0.3 else null)
+            if (result == PositionTracker.FixResult.RESET) reset = true
+            if (s >= 10) {
+                val lag = errorM(t, truthN)
+                worst = maxOf(worst, lag)
+                worstRatio = maxOf(worstRatio, lag / (3 * t.sigmaM + 1))
+            }
+        }
+        return Triple(worst, worstRatio, reset)
+    }
+
+    @Test
+    fun `walking without detected steps doesn't trail behind`() {
+        val (lag, ratio, reset) = ride(1.4, doppler = true, noise = 1.5)
+        assertTrue("lag $lag m", lag < 3.0)
+        assertTrue("sigma must cover the lag ($ratio)", ratio < 1.0)
+        assertFalse(reset)
+    }
+
+    @Test
+    fun `vehicle speed tracks without the reject-reset sawtooth`() {
+        for (speed in listOf(5.0, 12.0, 20.0)) { // jeep, car, the 20 m/s desk simulation
+            val (lag, ratio, reset) = ride(speed, doppler = true, noise = 1.5)
+            assertTrue("$speed m/s: lag $lag m", lag < 4.0)
+            assertTrue("$speed m/s: sigma must cover the lag ($ratio)", ratio < 1.0)
+            assertFalse("$speed m/s reset", reset)
+        }
+    }
+
+    @Test
+    fun `without Doppler, GNSS-grade fixes still imply the velocity`() {
+        for (speed in listOf(1.4, 5.0)) {
+            val (lag, _, reset) = ride(speed, doppler = false, noise = 1.0)
+            assertTrue("$speed m/s: lag $lag m", lag < 6.0)
+            assertFalse("$speed m/s reset", reset)
+        }
+    }
+
+    @Test
+    fun `steps and GPS velocity together don't double-count`() {
+        val t = PositionTracker()
+        var ms = 0L
+        for (s in 0..60) {
+            val p = at(-100.0 + 1.4 * s)
+            t.onFix(p.lat, p.lng, 5.0, ms, 1.4, 0.0, 0.3)
+            // two strides a second, north, between fixes
+            t.onStep(0.0, 1.0, ms + 250); t.onStep(0.0, 1.0, ms + 750)
+            ms += 1000
+        }
+        assertTrue("error ${errorM(t, -100.0 + 1.4 * 60)}", errorM(t, -100.0 + 1.4 * 60) < 2.0)
+        assertEquals(122L, t.stepCount) // counted, but GPS velocity carried the motion
+    }
+
+    @Test
+    fun `steps take over once GPS velocity goes stale indoors`() {
+        val t = PositionTracker()
+        val door = at(40.0)
+        t.onFix(door.lat, door.lng, 5.0, 0, 1.4, 180.0, 0.3) // walking south into the church
+        // No more fixes; the wearer keeps walking, a 0.7 m step every 0.5 s.
+        // Steps in the first 2.5 s are only counted (the velocity carries that
+        // stretch); after that the velocity is stale and steps drive.
+        for (ms in 500L..14_000L step 500L) t.onStep(0.0, -1.0, ms)
+        assertEquals(28L, t.stepCount)
+        // 14 s at 1.4 m/s from 40 m north of the reference point.
+        assertTrue("error ${errorM(t, 20.4)}", errorM(t, 20.4) < 0.5)
+    }
+
+    @Test
+    fun `a swing trips the gate, walking and trembling don't`() {
+        fun maxSwinging(peakRadPerS: Double, hz: Double): Pair<Boolean, Boolean> {
+            val gate = SwingGate()
+            val q = DoubleArray(4)
+            var anySwing = false
+            var t = 0L
+            while (t < 4_000_000_000L) {
+                // Oscillating yaw about the vertical: peak rate = amplitude * 2 pi f.
+                val yaw = peakRadPerS / (2 * PI * hz) * sin(2 * PI * hz * t / 1e9)
+                q[0] = cos(yaw / 2); q[1] = 0.0; q[2] = 0.0; q[3] = sin(yaw / 2)
+                gate.onOrientation(t, q)
+                anySwing = anySwing || gate.swinging(t)
+                t += 5_000_000L
+            }
+            // Held still afterwards: the gate reopens once the hold has passed.
+            repeat(100) { gate.onOrientation(t, q); t += 5_000_000L }
+            return anySwing to gate.swinging(t)
+        }
+        assertEquals(false to false, maxSwinging(0.6, 1.0))   // the sway of walking with the phone up
+        assertEquals(false to false, maxSwinging(0.05, 8.0))  // hand tremor: milliradians
+        assertEquals(true to false, maxSwinging(3.0, 0.5))    // whipping round after a burst
     }
 
     @Test

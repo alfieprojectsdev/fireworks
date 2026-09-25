@@ -23,6 +23,10 @@ class ApproachRouteTest {
         assertFalse(route.arrived(100.0))
         assertTrue(route.arrived(1000.0))
         assertEquals(5.0, route.distanceAt(1e6), 0.0)
+        // What the simulated feed reports as the fix's Doppler velocity.
+        assertEquals(270.0, route.headingDeg, 1e-9)
+        assertEquals(10.0, route.speedAt(100.0), 0.0)
+        assertEquals(0.0, route.speedAt(1000.0), 0.0)
     }
 
     @Test

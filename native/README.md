@@ -13,7 +13,7 @@ sensors read directly at 200 Hz.
 ## Build and test
 
 ```bash
-./gradlew :core:test            # 155 JVM tests - no Android SDK needed
+./gradlew :core:test            # 163 JVM tests - no Android SDK needed
 ./gradlew :app:assembleField    # the build for phones: non-debuggable, full speed (needs the SDK)
 ./gradlew :app:assembleDebug    # debuggable, for a debugger - runs at about half speed on the A07
 ./gradlew :app:connectedFieldAndroidTest   # on-device smoke tests (phone connected)

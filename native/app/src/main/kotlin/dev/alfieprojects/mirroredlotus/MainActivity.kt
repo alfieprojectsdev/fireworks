@@ -57,6 +57,7 @@ import dev.alfieprojects.mirroredlotus.gl.MsaaConfigChooser
 import dev.alfieprojects.mirroredlotus.gl.SceneTextures
 import dev.alfieprojects.mirroredlotus.gl.TextTextures
 import dev.alfieprojects.mirroredlotus.location.DeviceLocationFeed
+import dev.alfieprojects.mirroredlotus.location.Fix
 import dev.alfieprojects.mirroredlotus.location.LocationFeed
 import dev.alfieprojects.mirroredlotus.location.LocationListenerSink
 import dev.alfieprojects.mirroredlotus.location.LocationProblem
@@ -125,8 +126,6 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private var lastHudAt = 0L
     private val enuScratch = DoubleArray(4)
     private val facingScratch = DoubleArray(2)
-
-    private class Fix(val lat: Double, val lng: Double, val accuracy: Double?, val source: String)
 
     // ---- lifecycle ----------------------------------------------------------
 
@@ -258,9 +257,13 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     // ---- location -----------------------------------------------------------
 
-    override fun onFix(lat: Double, lng: Double, accuracyM: Double?, source: String) {
-        lastFix = Fix(lat, lng, accuracyM, source)
-        val fused = tracker.onFix(lat, lng, accuracyM, System.currentTimeMillis())
+    override fun onFix(fix: Fix) {
+        lastFix = fix
+        val (lat, lng, accuracyM, source) = fix
+        val fused = tracker.onFix(
+            lat, lng, accuracyM, System.currentTimeMillis(),
+            fix.speedMps, fix.bearingDeg, fix.speedAccuracyMps,
+        )
         if (fused == PositionTracker.FixResult.REJECTED_JUMP || fused == PositionTracker.FixResult.RESET) {
             Log.i(TAG, "tracker: $fused (fix ±${accuracyM?.let { Math.round(it) } ?: "?"} m)")
         }
@@ -594,10 +597,11 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 steps = tracker.stepCount,
                 rejectedFixes = tracker.rejectedFixes,
                 fusedDistanceM = activeSite?.let { Geo.distanceM(tracker.lat, tracker.lng, it.lat, it.lng) },
+                speedMps = tracker.speedMps(now),
             )
         } else null
         hudLines.text = HudFormatter.lines(
-            fix.source, fix.accuracy, fix.lat, fix.lng, if (testMode) 0.0 else distance, bearing,
+            fix.source, fix.accuracyM, fix.lat, fix.lng, if (testMode) 0.0 else distance, bearing,
             site.id, alignment(), perf(), track,
         ).joinToString("\n")
     }

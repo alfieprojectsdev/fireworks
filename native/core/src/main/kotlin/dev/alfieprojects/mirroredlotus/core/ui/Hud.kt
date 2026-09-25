@@ -52,8 +52,17 @@ data class PerfSnapshot(
     val headingSource: String,
 )
 
-/** The position tracker's state for the HUD. */
-data class TrackSnapshot(val sigmaM: Double, val steps: Long, val rejectedFixes: Long, val fusedDistanceM: Double?)
+/**
+ * The position tracker's state for the HUD. [speedMps] is the fresh GPS
+ * velocity's speed, or null when footsteps are driving the estimate.
+ */
+data class TrackSnapshot(
+    val sigmaM: Double,
+    val steps: Long,
+    val rejectedFixes: Long,
+    val fusedDistanceM: Double?,
+    val speedMps: Double? = null,
+)
 
 /**
  * The debug HUD's lines (`_buildHUD` in sensors.js), as plain text. The
@@ -94,7 +103,8 @@ object HudFormatter {
         )
         if (track != null) {
             val fused = track.fusedDistanceM?.let { "fused ${Math.round(it)}m " } ?: ""
-            out += "track: $fused±${Math.round(track.sigmaM)}m  steps ${track.steps}  gps-rej ${track.rejectedFixes}"
+            val motion = track.speedMps?.let { "gps ${fmt1(it)}m/s" } ?: "steps"
+            out += "track: $fused±${Math.round(track.sigmaM)}m  by $motion  steps ${track.steps}  gps-rej ${track.rejectedFixes}"
         }
         if (perf != null) {
             out += "fps: ${fmt1(perf.renderFps)}  cam: ${fmt1(perf.cameraFps)}  sensor: ${Math.round(perf.sensorHz)}Hz"

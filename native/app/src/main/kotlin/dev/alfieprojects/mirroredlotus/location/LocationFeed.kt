@@ -21,9 +21,23 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import dev.alfieprojects.mirroredlotus.core.sim.ApproachRoute
 
+/**
+ * One fix. [speedMps], [bearingDeg] and [speedAccuracyMps] are the provider's
+ * Doppler velocity, null when it reports none (typically indoors or on Wi-Fi).
+ */
+data class Fix(
+    val lat: Double,
+    val lng: Double,
+    val accuracyM: Double?,
+    val source: String,
+    val speedMps: Double? = null,
+    val bearingDeg: Double? = null,
+    val speedAccuracyMps: Double? = null,
+)
+
 /** Where fixes and location trouble are delivered - always on the main thread. */
 interface LocationListenerSink {
-    fun onFix(lat: Double, lng: Double, accuracyM: Double?, source: String)
+    fun onFix(fix: Fix)
     fun onProblem(problem: LocationProblem)
 }
 
@@ -121,7 +135,11 @@ class DeviceLocationFeed(private val context: Context) : LocationFeed {
         lastFixAt = SystemClock.elapsedRealtime()
         val acc = if (loc.hasAccuracy()) loc.accuracy.toDouble() else null
         val mock = if (Build.VERSION.SDK_INT >= 31) loc.isMock else @Suppress("DEPRECATION") loc.isFromMockProvider
-        sink?.onFix(loc.latitude, loc.longitude, acc, if (mock) "$source-mock" else source)
+        // A bearing is meaningless without a speed; a speed of 0 needs none.
+        val speed = if (loc.hasSpeed()) loc.speed.toDouble() else null
+        val bearing = if (speed != null && loc.hasBearing()) loc.bearing.toDouble() else null
+        val speedAcc = if (speed != null && loc.hasSpeedAccuracy()) loc.speedAccuracyMetersPerSecond.toDouble() else null
+        sink?.onFix(Fix(loc.latitude, loc.longitude, acc, if (mock) "$source-mock" else source, speed, bearing, speedAcc))
     }
 
     override fun stop() {
@@ -152,7 +170,7 @@ class SimulatedLocationFeed(private val route: ApproachRoute) : LocationFeed {
         override fun run() {
             val s = sink ?: return
             val p = route.positionAt(elapsedS)
-            s.onFix(p.lat, p.lng, 4.0, "sim")
+            s.onFix(Fix(p.lat, p.lng, 4.0, "sim", route.speedAt(elapsedS), route.headingDeg, 0.2))
             elapsedS += 1.0
             main.postDelayed(this, 1000L)
         }

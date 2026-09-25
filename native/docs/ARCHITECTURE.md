@@ -144,16 +144,30 @@ thin out and wander 20-50 m.
 
 `PositionTracker` is a small Kalman filter on a local east/north plane:
 
-- `StepDetector` finds footsteps in the accelerometer's bounce (magnitude minus
-  gravity, low-passed, with hysteresis).
-- `WalkHeading` points each step along the fused heading.
+- **Velocity** comes from each fix's Doppler speed and bearing, which the fused
+  provider reports outdoors to a few tenths of a m/s, on foot or in a car. When
+  a fix has none, two consecutive GNSS-grade fixes (10 m or better) imply one.
+  Between fixes the estimate moves with it, so a steady walk or drive leaves no
+  lag and moving fixes never look like jumps. The first version had no velocity
+  state: it trailed a walker by about 9x their speed in metres and cycled
+  reject/reset at vehicle speed.
+- **Footsteps** move the estimate only while no velocity is fresh (2.5 s), which
+  in practice means indoors. Outdoors they would count the same motion twice.
+  `StepDetector` finds them in the accelerometer's bounce (magnitude minus
+  gravity, low-passed, with hysteresis). A lone candidate isn't credited until
+  a second one arrives within 1.2 s (walking is a rhythm, a jolt isn't).
+  `SwingGate` drops candidates while the phone turns faster than 1.5 rad/s,
+  because swinging it round at arm's length puts more centripetal acceleration
+  into |a| than a footstep does. `WalkHeading` points each step along the fused
+  heading.
 - Each fix is weighted by its reported accuracy. Jumps far outside the combined
   uncertainty are rejected, until several in a row agree.
 - Uncertainty also grows slowly with time, so missed steps can't strand the
   estimate.
 
-Standing still indoors, the monument holds; walking, it moves by your strides;
-good GPS pulls it back. A true INS (integrating acceleration twice) is not an
+Outdoors, the monument follows GPS position and velocity. Standing still
+indoors, it holds. Walking indoors, it moves by your strides. Good GPS pulls it
+back. A true INS (integrating acceleration twice) is not an
 option on phone sensors: it drifts tens of metres a minute, and gearsync
 rejected it for the same reason. Pedestrian dead reckoning drifts a few percent
 of the distance walked.

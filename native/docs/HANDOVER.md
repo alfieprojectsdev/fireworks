@@ -7,7 +7,7 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 155 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP) | **Done, 163 JVM tests passing** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
 | `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build: three runs on `4e59787` and one on `fbc7c77`, which includes the back-face shader (`gl_FrontFacing`, `discard`, `uBackFaces`), compiled and linked on the Mali-G57 with `GL_NO_ERROR` |
@@ -44,7 +44,7 @@ when it opens the `native/` folder. Otherwise, create it with
 
 ```powershell
 cd fireworks\native
-.\gradlew.bat :core:test          # 155 tests, ~10 s
+.\gradlew.bat :core:test          # 163 tests, ~10 s
 .\gradlew.bat :app:assembleField
 ```
 
@@ -147,12 +147,30 @@ takes the screen's top edge: forward for a face-up phone, reversed for one
 tilted up at the sky.
 
 **Indoor position.** From the trigger on, the monument is anchored from
-`PositionTracker` (GPS fused with footsteps), not raw fixes. The HUD's `track:`
-line shows the fused distance, its uncertainty, the step count and rejected
-fixes. Inside the church, with the phone held still, the monument should not
-drift even though raw GPS wanders. Walking, it should move by your strides.
-Stride is fixed at 0.7 m. If walk-ins consistently over- or undershoot, that's
-the constant to tune (`PositionTracker(strideM)`).
+`PositionTracker`, not raw fixes. Outdoors it moves with the fix's Doppler
+velocity; indoors, where GPS has none, footsteps take over. fireworks-local's
+review of the first version (lag of ~9x walking speed with steps off, a
+reject/reset sawtooth at vehicle speed, phantom steps from panning) is fixed and
+covered by tests at 1.4, 5, 12 and 20 m/s.
+
+The HUD's `track:` line shows the fused distance, its uncertainty, what is
+moving the estimate (`by gps 1.4m/s` or `by steps`), the step count and rejected
+fixes. **On the phone:**
+
+1. **Standing still at a site.** A non-test launch at home triggers `origin`.
+   Hold the phone still for a minute: `by gps 0.0m/s`, the fused distance
+   steady, the monument not drifting.
+2. **Standing and watching.** Pan up and round after the bursts: the step count
+   should not climb. It is gated on rhythm (a lone jolt isn't a step) and on the
+   phone turning faster than 1.5 rad/s.
+3. **The walk-in.** Outdoors `by gps`; through the door it should switch to
+   `by steps` within about 2.5 s. Inside, standing still, the monument should
+   not drift even though raw GPS wanders.
+
+Stride is fixed at 0.7 m. If indoor walks consistently over- or undershoot,
+that's the constant to tune (`PositionTracker(strideM)`). A step goes where the
+camera faces, not where your feet go: walking in while filming off to one side
+dead-reckons sideways. Keep the camera roughly ahead while walking indoors.
 
 ## What to look at first on the phone, and what to try if it's wrong
 
