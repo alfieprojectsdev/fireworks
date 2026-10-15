@@ -97,7 +97,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private lateinit var options: DebugOptions
     private val ui = Handler(Looper.getMainLooper())
     private val history = OrientationHistory()
-    private val recorder = SessionRecorder(Sites.ALL)
+    /** Null in release, which has no session export to feed. */
+    private val recorder = if (BuildConfig.DEV_TOOLS) SessionRecorder(Sites.ALL) else null
     private val banner = CompassBanner()
     private val secretTaps = MultiTapDetector()
     private val hudTaps = MultiTapDetector()
@@ -203,8 +204,10 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         } ?: DeviceLocationFeed(this)
 
         if (options.hud) hud.visibility = View.VISIBLE
-        @Suppress("DEPRECATION")
-        DeviceProbe.log(this, windowManager.defaultDisplay)
+        if (BuildConfig.DEV_TOOLS) {
+            @Suppress("DEPRECATION")
+            DeviceProbe.log(this, windowManager.defaultDisplay)
+        }
         earphones.register()
         requestPermissionsIfNeeded()
     }
@@ -295,7 +298,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         lastFix = fix
         val (lat, lng, accuracyM, source) = fix
         val fused = tracker.onFix(
-            lat, lng, accuracyM, System.currentTimeMillis(),
+            lat, lng, accuracyM, SystemClock.elapsedRealtime(),
             fix.speedMps, fix.bearingDeg, fix.speedAccuracyMps,
         )
         if (fused == PositionTracker.FixResult.REJECTED_JUMP || fused == PositionTracker.FixResult.RESET) {
@@ -306,7 +309,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (!experienceStarted) {
             val decision = TriggerPolicy.evaluate(lat, lng)
             val near = decision.nearest
-            recorder.recordGps(System.currentTimeMillis(), lat, lng, accuracyM, source, near.distanceM, near.bearingDeg, alignment, near.site.id)
+            recorder?.recordGps(System.currentTimeMillis(), lat, lng, accuracyM, source, near.distanceM, near.bearingDeg, alignment, near.site.id)
             when (decision) {
                 is TriggerDecision.Trigger -> startExperience(near.site, lat, lng, test = false)
                 is TriggerDecision.Approach -> setStatus(distanceHint(near.distanceM))
@@ -315,7 +318,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             val site = activeSite ?: return
             val distance = Geo.distanceM(lat, lng, site.lat, site.lng)
             val bearing = Geo.bearingDeg(lat, lng, site.lat, site.lng)
-            recorder.recordGps(System.currentTimeMillis(), lat, lng, accuracyM, source, distance, bearing, alignment, site.id)
+            recorder?.recordGps(System.currentTimeMillis(), lat, lng, accuracyM, source, distance, bearing, alignment, site.id)
             // Test mode freezes staging at "arrived"; real GPS still logs. The
             // monument follows the fused estimate, not the raw fix, so indoor
             // GPS wander can't drag it around.
@@ -326,7 +329,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     /** A footstep (main thread): dead-reckon, and move the monument with the wearer. */
     private fun onStep(east: Double, north: Double) {
-        tracker.onStep(east, north, System.currentTimeMillis())
+        tracker.onStep(east, north, SystemClock.elapsedRealtime())
         if (experienceStarted) anchorToTracker()
         fieldTests?.onStep(SystemClock.elapsedRealtime(), east, north, orientation.detectedSteps, trackForLog())
     }
@@ -460,7 +463,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     private fun onAct(event: ActEvent, distanceM: Double) {
         Log.i(TAG, "act ${event.id} at ${Math.round(distanceM)} m (designed ${event.expectedM} m)")
-        recorder.recordAct(System.currentTimeMillis(), event, distanceM)
+        recorder?.recordAct(System.currentTimeMillis(), event, distanceM)
     }
 
     // ---- renderer callbacks -------------------------------------------------
@@ -554,7 +557,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     private fun exportSession() {
-        val json = recorder.exportJson(Instant.now().toString(), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        val json = recorder?.exportJson(Instant.now().toString(), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         if (json == null) {
             Toast.makeText(this, R.string.export_empty, Toast.LENGTH_LONG).show()
             return
@@ -586,7 +589,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 showBanner(banner.update(now))
             }
             if (history.latest(enuScratch) != Long.MIN_VALUE) {
-                recorder.recordOrientation(now, enuScratch[1], enuScratch[2], enuScratch[3], enuScratch[0])
+                recorder?.recordOrientation(now, enuScratch[1], enuScratch[2], enuScratch[3], enuScratch[0])
             }
             if (thermal.pollHeadroom(now)) applyQuality()
             // Camera-paced, a stalled camera would freeze the story: keep it at 10 Hz or better.
@@ -594,7 +597,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 glView.requestRender()
             }
             val p = perf()
-            recorder.recordPerf(
+            recorder?.recordPerf(
                 now, p.renderFps, p.cameraFps, p.cameraLatencyMs, p.sensorHz, p.poseLagMs,
                 thermal.status, thermal.headroom, thermalPolicy.level,
             )
@@ -787,7 +790,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (!tracker.initialised) return null
         return FieldTestLog.Track(
             tracker.lat, tracker.lng, tracker.sigmaM, tracker.stepCount, tracker.rejectedFixes,
-            tracker.speedMps(System.currentTimeMillis()),
+            tracker.speedMps(SystemClock.elapsedRealtime()),
         )
     }
 
@@ -806,7 +809,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 steps = tracker.stepCount,
                 rejectedFixes = tracker.rejectedFixes,
                 fusedDistanceM = activeSite?.let { Geo.distanceM(tracker.lat, tracker.lng, it.lat, it.lng) },
-                speedMps = tracker.speedMps(now),
+                speedMps = tracker.speedMps(SystemClock.elapsedRealtime()),
             )
         } else null
         hudLines.text = HudFormatter.lines(

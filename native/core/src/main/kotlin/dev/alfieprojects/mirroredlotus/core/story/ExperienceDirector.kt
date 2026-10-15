@@ -184,8 +184,9 @@ class ExperienceDirector(
 
     /** One fixed step of `_animate()`'s physics branch. */
     fun tick() {
-        ticks++
+        // Story time starts at start(): frames drawn before the trigger don't count.
         if (!started) return
+        ticks++
 
         fireworks.tickIllumination()
         val illumination = fireworks.textIllumination

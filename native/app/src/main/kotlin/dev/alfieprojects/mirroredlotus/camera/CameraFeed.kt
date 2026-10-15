@@ -97,7 +97,13 @@ class CameraFeed(context: Context) {
             callback.onError("no back camera")
             return
         }
-        val chars = cameraManager.getCameraCharacteristics(id)
+        // Throws too when policy disables the camera or its service has died.
+        val chars = try {
+            cameraManager.getCameraCharacteristics(id)
+        } catch (e: Exception) {
+            callback.onError(e.message ?: e.javaClass.simpleName)
+            return
+        }
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
         val sizes = map?.getOutputSizes(SurfaceTexture::class.java)?.map { PreviewSizeSelector.Size(it.width, it.height) }.orEmpty()
         val size = PreviewSizeSelector.choose(sizes, displayShortSide)
@@ -186,7 +192,9 @@ class CameraFeed(context: Context) {
             }
 
             override fun onConfigureFailed(s: CameraCaptureSession) {
-                if (gen == generation) callback.onError("session configuration failed")
+                // Give the device back, or isOpen stays true and nothing retries.
+                camera.close()
+                if (adopt(gen) { device = null; opening = false }) callback.onError("session configuration failed")
             }
         }
 

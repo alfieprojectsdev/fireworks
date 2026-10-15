@@ -22,19 +22,22 @@ import dev.alfieprojects.mirroredlotus.core.audio.SpatialMixer
  */
 class AudioEngine(context: Context, private val mixer: SpatialMixer) {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    @Volatile private var running = false
-    private var thread: Thread? = null
+    /**
+     * The loop that should be playing. Each loop runs only while it is still
+     * this one, so a loop that outlives stop()'s join can't keep playing next
+     * to the one the following start() makes.
+     */
+    @Volatile private var thread: Thread? = null
 
     fun start() {
         if (thread != null) return
-        running = true
-        thread = Thread({ loop() }, "lotus-audio").apply { start() }
+        Thread({ loop() }, "lotus-audio").also { thread = it }.start()
     }
 
     fun stop() {
-        running = false
-        thread?.join(500)
+        val t = thread
         thread = null
+        t?.join(500)
     }
 
     private fun loop() {
@@ -70,7 +73,8 @@ class AudioEngine(context: Context, private val mixer: SpatialMixer) {
         mixer.drainStale()
         try {
             track.play()
-            while (running) {
+            val self = Thread.currentThread()
+            while (thread === self) {
                 mixer.render(buf, frames)
                 track.write(buf, 0, buf.size, AudioTrack.WRITE_BLOCKING)
             }
