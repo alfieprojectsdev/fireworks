@@ -40,7 +40,9 @@ data class DebugOptions(
 ) {
     companion object {
         fun from(intent: Intent?): DebugOptions {
-            if (intent == null) return DebugOptions()
+            // The launcher activity is exported: in a release build any app could
+            // send these, so none of them are read.
+            if (intent == null || !BuildConfig.DEV_TOOLS) return DebugOptions()
             val d = DebugOptions()
             return DebugOptions(
                 testMode = intent.getBooleanExtra("testMode", d.testMode),

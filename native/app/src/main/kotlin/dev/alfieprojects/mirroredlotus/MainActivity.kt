@@ -145,7 +145,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private val sceneScratch = DoubleArray(4)
     private val forwardScratch = DoubleArray(3)
 
-    private lateinit var fieldTests: FieldTestController
+    /** Null in release: no field tests, so R8 drops them and their log writer. */
+    private var fieldTests: FieldTestController? = null
     /** A field test asked for at launch (`--es fieldTest`), started on the first UI tick. */
     private var pendingFieldTest: String? = null
 
@@ -161,7 +162,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         bindViews()
 
         haptics = Haptics(this)
-        fieldTests = FieldTestController(this, haptics, fieldTestHost)
+        if (BuildConfig.DEV_TOOLS) fieldTests = FieldTestController(this, haptics, fieldTestHost)
         pendingFieldTest = options.fieldTest
         orientation = OrientationSource(this, history, options.headingTauS)
         orientation.onStep = { east, north -> ui.post { onStep(east, north) } }
@@ -219,14 +220,14 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         startLocationIfPermitted()
         if (experienceStarted) openCameraIfReady()
         ui.post(uiTick)
-        fieldTests.onResume()
+        fieldTests?.onResume()
         goImmersive()
     }
 
     override fun onPause() {
         resumed = false
         ui.removeCallbacks(uiTick)
-        fieldTests.onPause()
+        fieldTests?.onPause()
         cameraFeed.close()
         renderer.setCameraConfig(null)
         locationFeed.stop()
@@ -239,7 +240,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     override fun onDestroy() {
-        fieldTests.close()
+        fieldTests?.close()
         cameraFeed.release()
         earphones.unregister()
         super.onDestroy()
@@ -300,7 +301,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         if (fused == PositionTracker.FixResult.REJECTED_JUMP || fused == PositionTracker.FixResult.RESET) {
             Log.i(TAG, "tracker: $fused (fix ±${accuracyM?.let { Math.round(it) } ?: "?"} m)")
         }
-        fieldTests.onFix(SystemClock.elapsedRealtime(), fix, fused.name, trackForLog())
+        fieldTests?.onFix(SystemClock.elapsedRealtime(), fix, fused.name, trackForLog())
         val alignment = alignment()
         if (!experienceStarted) {
             val decision = TriggerPolicy.evaluate(lat, lng)
@@ -327,7 +328,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     private fun onStep(east: Double, north: Double) {
         tracker.onStep(east, north, System.currentTimeMillis())
         if (experienceStarted) anchorToTracker()
-        fieldTests.onStep(SystemClock.elapsedRealtime(), east, north, orientation.detectedSteps, trackForLog())
+        fieldTests?.onStep(SystemClock.elapsedRealtime(), east, north, orientation.detectedSteps, trackForLog())
     }
 
     private fun anchorToTracker() {
@@ -491,12 +492,25 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         hud = findViewById(R.id.debug_hud)
         hudLines = findViewById(R.id.hud_lines)
 
-        findViewById<TextView>(R.id.build_version).apply {
-            text = getString(R.string.build_version, BuildConfig.VERSION_CODE, BuildConfig.BUILD_STAMP)
+        val buildLabel = findViewById<TextView>(R.id.build_version)
+        val hudToggle = findViewById<View>(R.id.hud_toggle)
+        if (BuildConfig.DEV_TOOLS) {
+            buildLabel.text = getString(R.string.build_version, BuildConfig.VERSION_CODE, BuildConfig.BUILD_STAMP)
             // The field-test menu: human taps work on the A07, only adb's are blocked.
-            setOnLongClickListener { showFieldTestMenu(); true }
+            buildLabel.setOnLongClickListener { showFieldTestMenu(); true }
+            hudLines.setOnLongClickListener { showFieldTestMenu(); true }
+            hudToggle.setOnClickListener {
+                if (hudTaps.onTap(System.currentTimeMillis()) == MultiTapDetector.Result.TRIGGERED) {
+                    hud.visibility = if (hud.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                    refreshHud(force = true)
+                }
+            }
+            findViewById<View>(R.id.hud_export).setOnClickListener { exportSession() }
+        } else {
+            // Release: no build label, no HUD, no field-test menu, no export.
+            buildLabel.visibility = View.GONE
+            hudToggle.visibility = View.GONE
         }
-        hudLines.setOnLongClickListener { showFieldTestMenu(); true }
 
         arrowFloat = ObjectAnimator.ofFloat(
             findViewById(R.id.splash_arrow), View.TRANSLATION_Y, 0f,
@@ -510,17 +524,13 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         }
 
         findViewById<View>(R.id.secret_override).setOnClickListener { onSecretTap() }
-        findViewById<View>(R.id.hud_toggle).setOnClickListener {
-            if (hudTaps.onTap(System.currentTimeMillis()) == MultiTapDetector.Result.TRIGGERED) {
-                hud.visibility = if (hud.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-                refreshHud(force = true)
-            }
-        }
         audioButton.setOnClickListener { setEarphones(!mixer.earphones) }
-        findViewById<View>(R.id.hud_export).setOnClickListener { exportSession() }
     }
 
     private fun onSecretTap() {
+        // Release has no test mode: the corner only skips a failed camera, and
+        // stays silent otherwise so nothing hints that it's there.
+        if (!BuildConfig.DEV_TOOLS && !cameraFailed) return
         when (secretTaps.onTap(System.currentTimeMillis())) {
             MultiTapDetector.Result.TICK -> haptics.tick()
             MultiTapDetector.Result.TRIGGERED -> {
@@ -592,7 +602,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
                 pendingFieldTest = null
                 startFieldTest(id, p)
             }
-            if (fieldTests.running) fieldTests.onTick(fieldSample(p), p, thermalPolicy.level)
+            fieldTests?.let { if (it.running) it.onTick(fieldSample(p), p, thermalPolicy.level) }
             refreshHud(force = false)
             ui.postDelayed(this, 100)
         }
@@ -639,7 +649,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             val note = "quality ${thermalPolicy.quality.describe} (thermal ${ThermalPolicy.statusName(thermal.status)}, " +
                 "headroom ${thermal.headroom})"
             Log.i(TAG, note)
-            if (::fieldTests.isInitialized) fieldTests.note(SystemClock.elapsedRealtime(), note)
+            fieldTests?.note(SystemClock.elapsedRealtime(), note)
         }
         val q = thermalPolicy.quality
         val next = thermalPolicy.pace(experienceStarted)
@@ -716,7 +726,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     private fun showFieldTestMenu() {
-        if (fieldTests.running) {
+        val tests = fieldTests ?: return
+        if (tests.running) {
             Toast.makeText(this, R.string.field_busy, Toast.LENGTH_SHORT).show()
             return
         }
@@ -730,7 +741,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     private fun startFieldTest(id: String, p: PerfSnapshot) {
-        if (fieldTests.running) return
+        val tests = fieldTests ?: return
+        if (tests.running) return
         val seed = SystemClock.elapsedRealtime()
         val script = FieldTests.byId(id, seed) ?: run {
             Toast.makeText(this, getString(R.string.field_unknown, id), Toast.LENGTH_LONG).show()
@@ -746,7 +758,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
             "site" to (activeSite?.id ?: "none"),
             "simulate" to (options.simulate?.id ?: "none"),
         )
-        fieldTests.start(script, fieldSample(p), extras)
+        tests.start(script, fieldSample(p), extras)
     }
 
     private fun fieldSample(p: PerfSnapshot): FieldSample {
@@ -837,6 +849,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (!BuildConfig.DEV_TOOLS) return
         // singleTask: a second `am start` without -S reaches us here. Only the
         // switches that can change at runtime are honoured; simulate and
         // headingTau need a fresh start (`am start -S`, as the deploy scripts do).

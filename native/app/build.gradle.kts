@@ -29,6 +29,9 @@ android {
         versionCode = buildMinutes
         versionName = "0.1.0-native"
         buildConfigField("String", "BUILD_STAMP", "\"$buildStamp\"")
+        // The HUD, session export, field tests, test mode and the adb launch
+        // switches. Off only in `release`, the build that gets published.
+        buildConfigField("boolean", "DEV_TOOLS", "true")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -43,12 +46,30 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // The published key lives outside the repo, because the debug key above
+        // is public and anyone could sign an "update" with it. Point the
+        // lotus.release.* properties in ~/.gradle/gradle.properties at it;
+        // without them assembleRelease still builds, unsigned.
+        val releaseStore = providers.gradleProperty("lotus.release.storeFile").orNull
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = providers.gradleProperty("lotus.release.storePassword").get()
+                keyAlias = providers.gradleProperty("lotus.release.keyAlias").get()
+                keyPassword = providers.gradleProperty("lotus.release.keyPassword").get()
+            }
+        }
     }
 
     buildTypes {
+        // The public build. DEV_TOOLS=false turns the debug surfaces into dead
+        // code, and R8 deletes it along with every android.util.Log call.
         release {
-            isMinifyEnabled = false
+            buildConfigField("boolean", "DEV_TOOLS", "false")
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
         // What goes on the phone for field tests. A debuggable build runs under
         // ART's debug mode. On the A07 that halved the frame rate and tripled the

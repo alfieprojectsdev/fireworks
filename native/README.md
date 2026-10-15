@@ -33,9 +33,18 @@ scripts/serve-apk.sh                                   # WiFi sideload, like ../
 ```
 
 All three install the non-debuggable `field` build; `LOTUS_VARIANT=debug`
-switches the deploy scripts to the debuggable one. Every build is signed with
-the committed `debug.keystore`, so installs from any machine update each other.
-It is a debug key and must never sign a release.
+switches the deploy scripts to the debuggable one. Debug and field builds are
+signed with the committed `debug.keystore`, so installs from any machine update
+each other. It is a debug key and must never sign a release.
+
+`./gradlew :app:assembleRelease` builds the one that gets published. It has
+`BuildConfig.DEV_TOOLS = false`, so the launch switches below, the test-mode
+triple-tap, the HUD, session export, the field-test menu and the build label
+are all off, and R8 strips that code and every `Log` call. It's signed with a
+key kept outside the repo, named by `lotus.release.*` in
+`~/.gradle/gradle.properties`; without those it builds unsigned. A release
+install and a field install have different signers, so switching between them
+means uninstalling first.
 
 The app installs as **Lotus Native** (`dev.alfieprojects.mirroredlotus`),
 alongside the Capacitor build (`com.alfie.anniversary`), so they can be
