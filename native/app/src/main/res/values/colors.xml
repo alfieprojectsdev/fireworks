@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="lotus_black">#000000</color>
+    <color name="lotus_white">#FFFFFF</color>
+    <color name="hud_background">#73000000</color>
+    <color name="ic_launcher_background">#08081E</color>
+    <color name="ic_launcher_petal">#F2C9E0</color>
+    <color name="ic_launcher_spark">#FFE7B0</color>
+</resources>

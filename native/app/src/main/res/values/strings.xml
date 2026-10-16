@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "Lotus Native" while the Capacitor build ("Mirrored Lotus") is still installed
+         beside it for A/B; rename once the web build is retired. -->
+    <string name="app_name">Lotus Native</string>
+
+    <string name="splash_arrow">↑</string>
+    <string name="splash_headline">Look up</string>
+    <string name="status_locating">Locating…</string>
+    <string name="status_distance_m">Approx %1$sm to go</string>
+    <string name="status_distance_km">Approx %1$skm to go</string>
+    <string name="status_permission_denied">Location permission denied. Enable it in Android settings.</string>
+    <string name="status_location_off">Location is off. Turn it on in quick settings.</string>
+    <string name="status_position_unavailable">Location unavailable. Step outside for clearer sky.</string>
+    <string name="status_slow_fix">Location is taking longer than usual…</string>
+    <string name="status_camera_unavailable">Camera unavailable. Tap the upper-right corner three times to skip.</string>
+    <string name="build_version">v%1$d · %2$s</string>
+
+    <string name="compass_calibrating">◎ calibrating heading…</string>
+    <string name="compass_locked">◉ heading locked</string>
+    <string name="compass_active">◉ heading active</string>
+    <string name="compass_needs_calibration">◎ compass unsure — wave the phone in a figure-8</string>
+
+    <string name="audio_mode_speaker">♪</string>
+    <string name="audio_mode_earphones">🎧</string>
+    <string name="audio_mode_description">Toggle earphone mode</string>
+
+    <string name="hud_acquiring">acquiring GPS…</string>
+    <string name="hud_gps_problem">GPS: %1$s</string>
+    <string name="hud_export">⬇ Export Session</string>
+    <string name="export_empty">No GPS events recorded yet.</string>
+    <string name="export_chooser">Share session</string>
+    <string name="export_failed">Could not write the session file.</string>
+
+    <!-- Field tests: the scripts' own text comes from :core (FieldTests). -->
+    <string name="field_menu_title">Field tests</string>
+    <string name="field_abort">hold to abort</string>
+    <string name="field_busy">A field test is already running.</string>
+    <string name="field_unknown">No field test called %1$s.</string>
+    <string name="field_log_path">log: %1$s</string>
+    <string name="field_log_unavailable">log: could not create a file</string>
+</resources>

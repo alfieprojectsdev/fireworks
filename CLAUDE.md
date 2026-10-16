@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A GPS-triggered AR anniversary app deployed as an Android APK via Capacitor. When the user is within 100 meters of a specific church in Manila (14.658888, 121.071173), the app activates a Three.js AR scene overlaid on the camera feed, showing fireworks and a spinning cylindrical marquee anchored to the church's physical location. The occasion: May 15, 2008 (wedding anniversary with "Bhaze").
 
+## Native port (`native/`)
+
+`native/` is a separate Gradle project: a native Kotlin + GLES 3 + Camera2 port of this experience, built to remove the WebView build's field latency. It has the same sites, acts, monument, fireworks and audio. Camera and overlay are drawn in one GL pass, posed at the camera frame's exposure instant, from 200 Hz rotation vectors. It installs as **Lotus Native** (`dev.alfieprojects.mirroredlotus`), side by side with this Capacitor app, which stays as the A/B reference and the rollback.
+
+- Work in `native/` follows `native/CLAUDE.md` (the `:core`-with-tests rule, frame and pose-timing landmines).
+- `./gradlew :core:test` (from `native/`) runs the JVM tests with no Android SDK. The current state and the next on-device steps are in `native/docs/HANDOVER.md`.
+- Behaviour changes to the web build's story (sites, act distances, fireworks, audio constants) should be mirrored in `native/core` and recorded in `native/docs/PARITY.md`, or the two builds drift.
+
 ## Build & Deploy
 
 The entire build-and-deploy workflow is:
@@ -34,7 +42,7 @@ Primary logic is split across two files: **`public/index.html`** (all JS, Three.
 - `#ui-layer` (z=3): "Locating…" status text shown before the experience triggers
 
 **Experience trigger logic:**
-- The native `SensorBridgePlugin` is the primary GPS and orientation source on Capacitor; `startWebGeoInterval()` (web geolocation `setInterval` at 3s) is the fallback when the native bridge does not deliver a location event within 2 seconds
+- The native `SensorBridgePlugin` is the primary GPS and orientation source on Capacitor. Its quaternion is Android's device→ENU (east-north-up) rotation; `sensors.js` premultiplies it by `_enuToScene` (-90° about X) to get the Three.js camera (east-up-south). Without that factor, an upright phone looks at the zenith; `startWebGeoInterval()` (web geolocation `setInterval` at 3s) is the fallback when the native bridge does not deliver a location event within 2 seconds
 - Triggers `startExperience()` when within 100m of `targetLat/targetLng`
 - Secret: triple-tapping the invisible 100×100px `#secret-override` div (top-right corner) bypasses GPS and enters **test mode**, where the AR group spawns 40m ahead instead of over the real GPS coordinates. Each tap fires `navigator.vibrate(60)` for tactile confirmation; the third tap (which fires `startExperience`) uses pattern `navigator.vibrate([40, 60, 120])` so the wearer feels the bypass succeeded. The vibrate calls are typeof-guarded and no-op when the API is unavailable.
 - While polling, the splash status text shows the live distance to the church (10m steps under 1 km, 0.1 km steps above) instead of static "Locating...". Permission/timeout/availability errors from `getCurrentPosition` surface human-readable copy in the same status line so a denied permission no longer looks like a hung app.
