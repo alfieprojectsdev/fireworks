@@ -27,7 +27,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = buildMinutes
-        versionName = "0.1.0-native"
+        versionName = "0.1.1-native"
         buildConfigField("String", "BUILD_STAMP", "\"$buildStamp\"")
         // The HUD, session export, field tests, test mode and the adb launch
         // switches. Off only in `release`, the build that gets published.
