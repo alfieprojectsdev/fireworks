@@ -3,6 +3,7 @@ package dev.alfieprojects.mirroredlotus.core.record
 import dev.alfieprojects.mirroredlotus.core.site.Site
 import dev.alfieprojects.mirroredlotus.core.story.ActEvent
 import dev.alfieprojects.mirroredlotus.core.ui.Alignment
+import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.round
 
@@ -86,7 +87,7 @@ class SessionRecorder(
     }
 
     /** Null when nothing has been recorded: the caller tells the wearer instead of sharing an empty file. */
-    fun exportJson(exportedAtIso: String, appVersion: String): String? = synchronized(lock) {
+    fun exportJson(exportedAtIso: String, appVersion: String, today: LocalDate): String? = synchronized(lock) {
         if (gps.isEmpty()) return@synchronized null
         val w = JsonWriter()
         w.beginObject()
@@ -96,7 +97,7 @@ class SessionRecorder(
         for (s in sites) {
             w.beginObject()
                 .field("id", s.id).field("lat", s.lat).field("lng", s.lng)
-                .field("anchor", s.anchor.toString()).field("marquee", s.marquee)
+                .field("anchor", s.anchor.toString()).field("marquee", s.marqueeOn(today))
                 .endObject()
         }
         w.endArray()

@@ -1,23 +1,35 @@
 package dev.alfieprojects.mirroredlotus.core.site
 
 import dev.alfieprojects.mirroredlotus.core.geo.Geo
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
  * One place the experience can happen. [anchor] is the local date-time the stat
- * pylons and the personal message count from; [marquee] is the crown's text.
+ * pylons and the personal message count from.
  */
 data class Site(
     val id: String,
     val lat: Double,
     val lng: Double,
     val anchor: LocalDateTime,
-    val marquee: String,
-)
+) {
+    /**
+     * The crown's text on [date]: "Anniversary" through the anchor's month,
+     * "Monthsary" the rest of the year, at both sites. Each web-build site had
+     * one fixed line; Alfie chose the date rule on 16 Oct 2026 so the greeting
+     * is always true for the day it's seen.
+     */
+    fun marqueeOn(date: LocalDate): String =
+        if (date.month == anchor.month) Sites.ANNIVERSARY_MARQUEE else Sites.MONTHSARY_MARQUEE
+}
 
 object Sites {
     /** Trigger radius per site. The two sites are ~1.94 km apart, so the rings overlap slightly. */
     const val TRIGGER_RADIUS_M = 1800.0
+
+    const val ANNIVERSARY_MARQUEE = "Happy Anniversary, Bhaze!"
+    const val MONTHSARY_MARQUEE = "Happy Monthsary, Bhaze!"
 
     val CHURCH = Site(
         id = "church",
@@ -25,7 +37,6 @@ object Sites {
         lng = 121.071173166497,
         // Wedding, 10am ceremony - the Hours stat anchors here.
         anchor = LocalDateTime.of(2008, 5, 15, 10, 0, 0),
-        marquee = "Happy Anniversary, Bhaze!",
     )
 
     val ORIGIN = Site(
@@ -34,7 +45,6 @@ object Sites {
         lng = 121.05472805488795,
         // When Alfie and Bhazel became a couple: the "monthsary" site.
         anchor = LocalDateTime.of(2005, 10, 15, 0, 0, 0),
-        marquee = "Happy Monthsary, Bhaze!",
     )
 
     /** Order matters: test mode previews the first entry, as in the web build. */

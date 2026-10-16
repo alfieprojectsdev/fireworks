@@ -42,12 +42,12 @@ class ActsTest {
     }
 
     @Test
-    fun `stats emerge from 100 to 40 m and keep the web overshoot inside`() {
-        assertEquals(0.0, Acts.statsTarget(100.1), 0.0)
-        assertEquals(0.0, Acts.statsTarget(100.0), 1e-12)
-        assertEquals(0.5, Acts.statsTarget(70.0), 1e-12)
-        assertEquals(1.0, Acts.statsTarget(40.0), 1e-12)
-        assertEquals(5 / 3.0, Acts.statsTarget(0.0), 1e-12)
+    fun `stats emerge from 300 to 150 m and keep the web overshoot inside`() {
+        assertEquals(0.0, Acts.statsTarget(300.1), 0.0)
+        assertEquals(0.0, Acts.statsTarget(300.0), 1e-12)
+        assertEquals(0.5, Acts.statsTarget(225.0), 1e-12)
+        assertEquals(1.0, Acts.statsTarget(150.0), 1e-12)
+        assertEquals(2.0, Acts.statsTarget(0.0), 1e-12)
     }
 
     @Test
@@ -58,17 +58,16 @@ class ActsTest {
             1500.0 to "beacon_full", 800.1 to "beacon_full",
             800.0 to "beacon_fading_out", 650.1 to "beacon_fading_out",
             650.0 to "fireworks_only", 400.1 to "fireworks_only",
-            400.0 to "marquee_fading_in", 150.1 to "marquee_fading_in",
-            150.0 to "marquee_full", 100.1 to "marquee_full",
-            100.0 to "stats_fading_in", 40.1 to "stats_fading_in",
-            40.0 to "full_experience", 0.0 to "full_experience",
+            400.0 to "marquee_fading_in", 300.1 to "marquee_fading_in",
+            300.0 to "marquee_and_stats_fading_in", 150.1 to "marquee_and_stats_fading_in",
+            150.0 to "full_experience", 0.0 to "full_experience",
         )
         for ((d, label) in expected) assertEquals("at $d m", label, Acts.stageLabel(d))
     }
 
     @Test
     fun `act events carry the recorder's expected distances`() {
-        assertEquals(listOf(1800, 800, 400, 100), ActEvent.entries.map { it.expectedM })
+        assertEquals(listOf(1800, 800, 400, 300), ActEvent.entries.map { it.expectedM })
         assertEquals(listOf("beacon_on", "fireworks_on", "marquee_on", "stats_on"), ActEvent.entries.map { it.id })
     }
 }

@@ -57,7 +57,15 @@ class AnniversaryStatsTest {
         val s = AnniversaryStats.compute(Sites.ORIGIN.anchor, at(2026, 9, 25), manila)
         assertEquals(20, s.years)
         assertEquals(20 * 12 + 11, s.months) // Oct 2005 -> Sep 2026 = 251, 25 >= 15
-        assertEquals(listOf("20 Years", "251 Months", "${s.hours} Hours", "${s.days} Days"), s.pylonTexts())
+        assertEquals(
+            listOf(
+                AnniversaryStats.PylonStat("20", "YEARS"),
+                AnniversaryStats.PylonStat("251", "MONTHS"),
+                AnniversaryStats.PylonStat("${s.hours}", "HOURS"),
+                AnniversaryStats.PylonStat("${s.days}", "DAYS"),
+            ),
+            s.pylonStats(),
+        )
     }
 
     @Test

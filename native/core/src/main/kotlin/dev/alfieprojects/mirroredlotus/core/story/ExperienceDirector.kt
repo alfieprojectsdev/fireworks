@@ -4,6 +4,7 @@ import dev.alfieprojects.mirroredlotus.core.fx.ExplosionListener
 import dev.alfieprojects.mirroredlotus.core.fx.FireworkSystem
 import dev.alfieprojects.mirroredlotus.core.fx.Rng
 import dev.alfieprojects.mirroredlotus.core.geo.SceneGeo
+import dev.alfieprojects.mirroredlotus.core.render.SceneLayout
 import dev.alfieprojects.mirroredlotus.core.site.Site
 import kotlin.math.min
 import kotlin.math.sin
@@ -82,6 +83,8 @@ class ExperienceDirector(
     var marqueeOpacity = 0.0; private set
     var statsOpacity = 0.0; private set
     var beaconOpacity = 0.0; private set
+    /** The four legs: a faint share of the crown, with no firework pulse. */
+    var legOpacity = 0.0; private set
 
     var marqueeRotation = 0.0; private set
     var messageRotation = 0.0; private set
@@ -215,7 +218,10 @@ class ExperienceDirector(
         val mqPulse = illumination * 0.6 * min(1.0, marqueeBase * 5)
         val stPulse = illumination * 0.4 * min(1.0, statsBase * 5)
         marqueeOpacity = marqueeBase + mqPulse
-        statsOpacity = statsBase * 0.5 + stPulse
+        // The web build drew the pylons at half this (and a 0.6 fill): at most
+        // 0.24 against the camera feed. Digits-only panels get the full base.
+        statsOpacity = statsBase + stPulse
+        legOpacity = marqueeBase * SceneLayout.LEG_SHARE_OF_CROWN
         beaconOpacity = beaconBase
 
         marqueeRotation -= 0.002

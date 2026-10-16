@@ -18,12 +18,23 @@ object MonumentPlacement {
     fun ground(out: FloatArray, gx: Float, gy: Float, gz: Float): FloatArray =
         Mat4.translateRotateYX(out, gx, gy + SceneLayout.GROUND_Y, gz, 0f, -HALF_PI)
 
-    /** Pylon [i] (0..3) is a unit plane scaled to [widthM] x pylon height, facing outward. */
-    fun pylon(out: FloatArray, i: Int, gx: Float, gy: Float, gz: Float, widthM: Float): FloatArray =
+    /**
+     * Pylon [i]'s stat panel (0..3): a unit plane scaled to the panel for
+     * [digitCount] digits, facing outward, its bottom on the ground.
+     */
+    fun pylon(out: FloatArray, i: Int, gx: Float, gy: Float, gz: Float, digitCount: Int): FloatArray =
         Mat4.translateRotateYX(
             out,
-            gx + SceneLayout.pylonOffsetX(i), gy + SceneLayout.PYLON_Y, gz + SceneLayout.pylonOffsetZ(i),
-            SceneLayout.PYLON_ROTATIONS[i], 0f, widthM, SceneLayout.PYLON_HEIGHT, 1f,
+            gx + SceneLayout.pylonOffsetX(i), gy + SceneLayout.panelCentreY(digitCount), gz + SceneLayout.pylonOffsetZ(i),
+            SceneLayout.PYLON_ROTATIONS[i], 0f, SceneLayout.panelWidth(), SceneLayout.panelHeight(digitCount), 1f,
+        )
+
+    /** Leg [i] (0..3): a unit plane scaled to the 50 m pillar behind panel [i]. */
+    fun leg(out: FloatArray, i: Int, gx: Float, gy: Float, gz: Float): FloatArray =
+        Mat4.translateRotateYX(
+            out,
+            gx + SceneLayout.pylonOffsetX(i), gy + SceneLayout.LEG_Y, gz + SceneLayout.pylonOffsetZ(i),
+            SceneLayout.PYLON_ROTATIONS[i], 0f, SceneLayout.LEG_WIDTH, SceneLayout.LEG_HEIGHT, 1f,
         )
 
     fun crown(out: FloatArray, gx: Float, gy: Float, gz: Float, rotation: Float): FloatArray =

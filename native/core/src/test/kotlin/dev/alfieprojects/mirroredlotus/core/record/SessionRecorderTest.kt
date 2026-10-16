@@ -8,12 +8,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class SessionRecorderTest {
 
     @Test
     fun `an empty session exports nothing`() {
-        assertNull(SessionRecorder(Sites.ALL).exportJson("2026-09-25T00:00:00Z", "test"))
+        assertNull(SessionRecorder(Sites.ALL).exportJson("2026-09-25T00:00:00Z", "test", LocalDate.of(2026, 9, 25)))
     }
 
     @Test
@@ -25,7 +26,7 @@ class SessionRecorderTest {
         r.recordOrientation(2000, 0.5, 0.5, 0.5, 0.5) // inside the 5 s gate: dropped
         r.recordAct(3000, ActEvent.BEACON_ON, 1790.4)
         r.recordPerf(3000, 59.94, 30.0, 55.55, 200.0, 40.0, thermalStatus = 3, headroom = 0.9734, qualityLevel = 2)
-        val json = JSONObject(r.exportJson("2026-09-25T00:00:00Z", "0.1.0 (1)")!!)
+        val json = JSONObject(r.exportJson("2026-09-25T00:00:00Z", "0.1.0 (1)", LocalDate.of(2026, 9, 25))!!)
 
         for (key in listOf("exportedAt", "sites", "summary", "actEvents", "gpsEvents", "oriSamples")) {
             assertTrue("missing $key", json.has(key))
@@ -63,7 +64,7 @@ class SessionRecorderTest {
         val r = SessionRecorder(Sites.ALL, maxGps = 3)
         for (i in 0 until 5) r.recordGps(i * 1000L, 0.0, 0.0, 1.0, "x", i.toDouble(), 0.0, null, null)
         assertEquals(3, r.gpsCount)
-        val events = JSONObject(r.exportJson("t", "v")!!).getJSONArray("gpsEvents")
+        val events = JSONObject(r.exportJson("t", "v", LocalDate.of(2026, 9, 25))!!).getJSONArray("gpsEvents")
         assertEquals(2, events.getJSONObject(0).getInt("distM"))
     }
 

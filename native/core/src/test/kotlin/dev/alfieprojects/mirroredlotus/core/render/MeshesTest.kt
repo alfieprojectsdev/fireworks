@@ -59,6 +59,23 @@ class MeshesTest {
         assertEquals(35f, SceneLayout.pylonOffsetX(1), 1e-4f); assertEquals(0f, SceneLayout.pylonOffsetZ(1), 1e-4f)
         assertEquals(0f, SceneLayout.pylonOffsetX(2), 1e-4f); assertEquals(-35f, SceneLayout.pylonOffsetZ(2), 1e-4f)
         assertEquals(-35f, SceneLayout.pylonOffsetX(3), 1e-4f); assertEquals(0f, SceneLayout.pylonOffsetZ(3), 1e-4f)
-        assertEquals(50f / 8, SceneLayout.pylonWidth(8), 0f)
+    }
+
+    @Test
+    fun `stat panels stand on the ground and grow with the digit count`() {
+        assertEquals(5.4f, SceneLayout.panelWidth(), 1e-6f)
+        assertEquals(12f, SceneLayout.panelHeight(3), 0f)
+        assertEquals(24f, SceneLayout.panelHeight(6), 0f)
+        // Bottom edge at local -15, the ground.
+        assertEquals(-15f, SceneLayout.panelCentreY(3) - SceneLayout.panelHeight(3) / 2, 0f)
+        assertEquals(-15f, SceneLayout.panelCentreY(6) - SceneLayout.panelHeight(6) / 2, 0f)
+        // The unit strip has the same share of the panel as on the texture.
+        assertEquals(TextSpecs.PYLON_UNIT_STRIP, SceneLayout.UNIT_STRIP_M / SceneLayout.DIGIT_CELL_M, 1e-6f)
+    }
+
+    @Test
+    fun `legs run from the ground to the crown`() {
+        assertEquals(-15f, SceneLayout.LEG_Y - SceneLayout.LEG_HEIGHT / 2, 0f)
+        assertEquals(SceneLayout.CROWN_Y - SceneLayout.CROWN_HEIGHT / 2, SceneLayout.LEG_Y + SceneLayout.LEG_HEIGHT / 2, 0f)
     }
 }

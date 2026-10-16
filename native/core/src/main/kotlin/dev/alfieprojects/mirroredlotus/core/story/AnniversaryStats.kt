@@ -19,12 +19,15 @@ import java.time.ZoneId
  */
 data class AnniversaryStats(val years: Int, val months: Int, val hours: Long, val days: Long) {
 
+    /** One pylon's caption: the number stacked as digits, the unit beside it. */
+    data class PylonStat(val number: String, val unit: String)
+
     /** Pylon captions in the web build's order: compass 0, 90, 180, 270 degrees. */
-    fun pylonTexts(): List<String> = listOf(
-        "$years Years",
-        "$months Months",
-        "$hours Hours",
-        "$days Days",
+    fun pylonStats(): List<PylonStat> = listOf(
+        PylonStat("$years", "YEARS"),
+        PylonStat("$months", "MONTHS"),
+        PylonStat("$hours", "HOURS"),
+        PylonStat("$days", "DAYS"),
     )
 
     companion object {

@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import dev.alfieprojects.mirroredlotus.core.render.Rgba
 import dev.alfieprojects.mirroredlotus.core.render.TextSpecs
+import dev.alfieprojects.mirroredlotus.core.story.AnniversaryStats
 
 /**
  * Rasterises the monument's text with an Android Canvas - the drawing half of
@@ -14,7 +15,7 @@ import dev.alfieprojects.mirroredlotus.core.render.TextSpecs
  */
 object TextTextures {
 
-    class Pylon(val bitmap: Bitmap, val charCount: Int)
+    class Pylon(val bitmap: Bitmap, val digitCount: Int)
 
     fun marquee(text: String, maxWidth: Int): Bitmap {
         val paint = textPaint(TextSpecs.MARQUEE_FONT_PX, TextSpecs.MARQUEE_FILL, TextSpecs.MARQUEE_GLOW_BLUR)
@@ -27,22 +28,27 @@ object TextTextures {
         return bmp
     }
 
-    fun pylon(text: String, maxHeight: Int): Pylon {
-        val layout = TextSpecs.pylon(text, maxHeight)
-        val paint = textPaint(layout.fontPx, TextSpecs.PYLON_FILL, TextSpecs.PYLON_GLOW_BLUR * layout.cell / TextSpecs.PYLON_CELL_PX)
+    /** Digits stacked top to bottom, the unit reading downward in the strip on the right. */
+    fun pylon(stat: AnniversaryStats.PylonStat, maxHeight: Int): Pylon {
+        val layout = TextSpecs.pylon(stat.number, maxHeight)
+        val glow = TextSpecs.PYLON_GLOW_BLUR * layout.cell / TextSpecs.PYLON_CELL_PX
         val bmp = Bitmap.createBitmap(layout.width, layout.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        val centreOffset = -(paint.descent() + paint.ascent()) / 2
-        var i = 0
-        var offset = 0
-        while (offset < text.length) {
-            val cp = text.codePointAt(offset)
-            val glyph = String(Character.toChars(cp))
-            canvas.drawText(glyph, layout.glyphCentreX, layout.glyphCentreY(i) + centreOffset, paint)
-            offset += Character.charCount(cp)
-            i++
+
+        val digits = textPaint(layout.digitFontPx, TextSpecs.PYLON_FILL, glow).apply { isFakeBoldText = true }
+        val digitOffset = -(digits.descent() + digits.ascent()) / 2
+        stat.number.forEachIndexed { i, ch ->
+            canvas.drawText(ch.toString(), layout.digitCentreX, layout.digitCentreY(i) + digitOffset, digits)
         }
-        return Pylon(bmp, layout.charCount)
+
+        val unit = textPaint(layout.unitFontPx, TextSpecs.PYLON_FILL, glow).apply { letterSpacing = 0.12f }
+        val length = unit.measureText(stat.unit)
+        if (length > layout.unitMaxLengthPx) unit.textScaleX = layout.unitMaxLengthPx / length
+        canvas.save()
+        canvas.rotate(90f, layout.unitCentreX, layout.unitCentreY)
+        canvas.drawText(stat.unit, layout.unitCentreX, layout.unitCentreY - (unit.descent() + unit.ascent()) / 2, unit)
+        canvas.restore()
+        return Pylon(bmp, layout.digitCount)
     }
 
     fun message(line: String): Bitmap {

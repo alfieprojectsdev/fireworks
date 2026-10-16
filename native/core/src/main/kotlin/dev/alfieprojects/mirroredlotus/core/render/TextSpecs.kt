@@ -51,22 +51,53 @@ object TextSpecs {
     }
 
     // ---- stat pylons --------------------------------------------------------
+    // Digits only (Alfie's call, 16 Oct 2026): the number stacked one digit per
+    // square cell, the unit running sideways in a strip on the right. The web
+    // build stacked the whole caption ("252 Months"), number on top, which put
+    // the number above the frame by the time it was lit.
     const val PYLON_CELL_PX = 256
-    const val PYLON_FONT_PX = 180f
+    /** Digit size in a 256 px cell: a digit's height is about 0.65 of its cell. */
+    const val PYLON_DIGIT_FONT_PX = 230f
+    /** Unit strip width as a share of a cell (1.4 m beside 4 m digits). */
+    const val PYLON_UNIT_STRIP = 0.35f
+    /** Unit letters' size as a share of the strip's width. */
+    const val PYLON_UNIT_FONT = 0.8f
+    /** The unit may run at most this share of the stack's height. */
+    const val PYLON_UNIT_MAX_LENGTH = 0.9f
     const val PYLON_GLOW_BLUR = 12f
-    val PYLON_FILL = Rgba(255, 255, 255, 0.6f)
+    val PYLON_FILL = Rgba(255, 255, 255, 0.9f)
 
-    data class PylonLayout(val width: Int, val height: Int, val cell: Int, val fontPx: Float, val charCount: Int) {
-        fun glyphCentreY(i: Int): Float = cell * (i + 0.5f)
-        val glyphCentreX: Float get() = cell / 2f
+    data class PylonLayout(
+        val width: Int,
+        val height: Int,
+        val cell: Int,
+        val digitFontPx: Float,
+        val digitCount: Int,
+        val stripPx: Int,
+        val unitFontPx: Float,
+    ) {
+        fun digitCentreY(i: Int): Float = cell * (i + 0.5f)
+        val digitCentreX: Float get() = cell / 2f
+        val unitCentreX: Float get() = cell + stripPx / 2f
+        val unitCentreY: Float get() = height / 2f
+        /** Longest the unit may run along the stack; the app squeezes it to fit. */
+        val unitMaxLengthPx: Float get() = height * PYLON_UNIT_MAX_LENGTH
     }
 
-    /** One square cell per character, stacked top to bottom (spaces included). */
-    fun pylon(text: String, maxHeight: Int = 4096): PylonLayout {
-        val n = max(1, text.codePointCount(0, text.length))
+    /** One square cell per digit, stacked top to bottom, plus the unit strip. */
+    fun pylon(number: String, maxHeight: Int = 4096): PylonLayout {
+        val n = max(1, number.codePointCount(0, number.length))
         val cell = min(PYLON_CELL_PX, maxHeight / n)
-        val fontPx = PYLON_FONT_PX * cell / PYLON_CELL_PX
-        return PylonLayout(cell, cell * n, cell, fontPx, n)
+        val strip = (cell * PYLON_UNIT_STRIP).roundToInt()
+        return PylonLayout(
+            width = cell + strip,
+            height = cell * n,
+            cell = cell,
+            digitFontPx = PYLON_DIGIT_FONT_PX * cell / PYLON_CELL_PX,
+            digitCount = n,
+            stripPx = strip,
+            unitFontPx = strip * PYLON_UNIT_FONT,
+        )
     }
 
     // ---- personal message ---------------------------------------------------

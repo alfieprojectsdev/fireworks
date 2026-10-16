@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 
 class SitesTest {
 
@@ -21,6 +22,23 @@ class SitesTest {
         assertEquals("2005-10-15T00:00", Sites.ORIGIN.anchor.toString())
         assertEquals(1800.0, Sites.TRIGGER_RADIUS_M, 0.0)
         assertSame(Sites.CHURCH, Sites.ALL.first())
+    }
+
+    @Test
+    fun `the crown says Anniversary through the anchor's month and Monthsary otherwise`() {
+        val origin = Sites.ORIGIN // anchored in October
+        assertEquals(Sites.MONTHSARY_MARQUEE, origin.marqueeOn(LocalDate.of(2026, 9, 30)))
+        assertEquals(Sites.ANNIVERSARY_MARQUEE, origin.marqueeOn(LocalDate.of(2026, 10, 1)))
+        assertEquals(Sites.ANNIVERSARY_MARQUEE, origin.marqueeOn(LocalDate.of(2026, 10, 15)))
+        assertEquals(Sites.ANNIVERSARY_MARQUEE, origin.marqueeOn(LocalDate.of(2026, 10, 31)))
+        assertEquals(Sites.MONTHSARY_MARQUEE, origin.marqueeOn(LocalDate.of(2026, 11, 1)))
+
+        val church = Sites.CHURCH // anchored in May
+        assertEquals(Sites.MONTHSARY_MARQUEE, church.marqueeOn(LocalDate.of(2027, 4, 30)))
+        assertEquals(Sites.ANNIVERSARY_MARQUEE, church.marqueeOn(LocalDate.of(2027, 5, 1)))
+        assertEquals(Sites.ANNIVERSARY_MARQUEE, church.marqueeOn(LocalDate.of(2027, 5, 31)))
+        assertEquals(Sites.MONTHSARY_MARQUEE, church.marqueeOn(LocalDate.of(2027, 6, 1)))
+        assertEquals(Sites.MONTHSARY_MARQUEE, church.marqueeOn(LocalDate.of(2026, 10, 15)))
     }
 
     @Test

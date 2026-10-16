@@ -97,14 +97,35 @@ class SceneProjectionTest {
     @Test
     fun `the pylon facing the wearer is upright and readable`() {
         val d = directorAt(180.0, 60.0) // 25 m from the south pylon's face
-        val m = MonumentPlacement.pylon(FloatArray(16), 0, d.groupX.toFloat(), d.groupY.toFloat(), d.groupZ.toFloat(), 6.25f)
-        val vp = viewProj(0.0, 45.0)
+        val m = MonumentPlacement.pylon(FloatArray(16), 0, d.groupX.toFloat(), d.groupY.toFloat(), d.groupZ.toFloat(), 3)
+        val vp = viewProj(0.0, 10.0)
         val centre = ndc(vp, m, 0f, 0f, 0f)!!
         assertTrue(onScreen(centre))
         val right = ndc(vp, m, 0.5f, 0f, 0f)!!
         val top = ndc(vp, m, 0f, 0.5f, 0f)!!
         assertTrue("image right is screen right", right[0] > centre[0])
         assertTrue("image top is screen top", top[1] > centre[1])
+    }
+
+    /**
+     * The reason for the digits-only redesign: from a car with the phone held
+     * about level, the whole number must be in frame and big enough to read
+     * from the moment the pylons light until 60 m out. A07: 1600 px tall.
+     */
+    @Test
+    fun `a three-digit stat is in frame and readable from 300 m to 60 m`() {
+        val vp = viewProj(0.0, 10.0)
+        for (metres in listOf(300.0, 250.0, 150.0, 100.0, 60.0)) {
+            val d = directorAt(180.0, metres)
+            val m = MonumentPlacement.pylon(FloatArray(16), 0, d.groupX.toFloat(), d.groupY.toFloat(), d.groupZ.toFloat(), 3)
+            val top = ndc(vp, m, 0f, 0.5f, 0f)
+            val bottom = ndc(vp, m, 0f, -0.5f, 0f)
+            assertTrue("top on screen at $metres m", onScreen(top))
+            assertTrue("bottom on screen at $metres m", onScreen(bottom))
+            // One 4 m cell holds a digit about 0.65 of its height tall.
+            val digitPx = (top!![1] - bottom!![1]) / 2f * 1600f / 3f * 0.65f
+            if (metres <= 180.0) assertTrue("digit ${digitPx}px at $metres m", digitPx >= 18f)
+        }
     }
 
     @Test

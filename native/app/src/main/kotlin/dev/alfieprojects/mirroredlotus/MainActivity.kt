@@ -75,6 +75,7 @@ import dev.alfieprojects.mirroredlotus.perf.ThermalMonitor
 import dev.alfieprojects.mirroredlotus.sensors.OrientationSource
 import dev.alfieprojects.mirroredlotus.ui.Haptics
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.Locale
@@ -410,8 +411,8 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
         val stats = AnniversaryStats.compute(site.anchor, now, zone)
         val maxTex = renderer.maxTextureSize
         val textures = SceneTextures(
-            marquee = TextTextures.marquee(site.marquee, maxTex),
-            pylons = stats.pylonTexts().map { TextTextures.pylon(it, maxTex) },
+            marquee = TextTextures.marquee(site.marqueeOn(now.toLocalDate()), maxTex),
+            pylons = stats.pylonStats().map { TextTextures.pylon(it, maxTex) },
             message = TextTextures.message(AnniversaryStats.messageLine(site.anchor, now)),
         )
         val (fwdX, fwdZ) = currentForward()
@@ -557,7 +558,7 @@ class MainActivity : Activity(), LocationListenerSink, ArRenderer.Listener {
     }
 
     private fun exportSession() {
-        val json = recorder?.exportJson(Instant.now().toString(), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        val json = recorder?.exportJson(Instant.now().toString(), "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})", LocalDate.now())
         if (json == null) {
             Toast.makeText(this, R.string.export_empty, Toast.LENGTH_LONG).show()
             return

@@ -74,11 +74,11 @@ class BackFacesTest {
     fun `a pylon's front faces the way it reads`() {
         val plane = Meshes.plane(1f, 1f)
         // The south pylon, seen from the south (outside the ring) and from the north (inside).
-        val model = MonumentPlacement.pylon(FloatArray(16), 0, 0f, 15f, -60f, 6.25f)
+        val model = MonumentPlacement.pylon(FloatArray(16), 0, 0f, 15f, -60f, 3)
         val fromSouth = Mat4.multiply(FloatArray(16), viewProj(0.0, 30.0), model)
         assertTrue(frontFacing(fromSouth, plane, 0) && frontFacing(fromSouth, plane, 1))
         // From the monument's north side, looking back south at the same pylon.
-        val behindModel = MonumentPlacement.pylon(FloatArray(16), 0, 0f, 15f, 60f, 6.25f)
+        val behindModel = MonumentPlacement.pylon(FloatArray(16), 0, 0f, 15f, 60f, 3)
         val fromNorth = Mat4.multiply(FloatArray(16), viewProj(180.0, 30.0), behindModel)
         assertTrue(!frontFacing(fromNorth, plane, 0) && !frontFacing(fromNorth, plane, 1))
     }

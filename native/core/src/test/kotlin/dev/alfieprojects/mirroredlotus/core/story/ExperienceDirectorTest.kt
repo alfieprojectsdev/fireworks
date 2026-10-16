@@ -27,6 +27,19 @@ class ExperienceDirectorTest {
     }
 
     @Test
+    fun `at 200 m the stat panels are lit at full base and the legs at a tenth of the crown`() {
+        val user = Geo.destination(church.lat, church.lng, Math.toRadians(180.0), 200.0)
+        val d = ExperienceDirector(Rng(3))
+        d.start(church, user.lat, user.lng, testMode = false)
+        repeat(ticksFor(10.0)) { d.tick() }
+        // Target 0.8 x (1 - 50/150); ten seconds of 2% lerps lands within a hair of it.
+        assertEquals(0.8 * 2 / 3.0, d.statsBase, 1e-3)
+        assertTrue("no halving: ${d.statsOpacity}", d.statsOpacity >= d.statsBase)
+        assertEquals(d.marqueeBase * 0.1, d.legOpacity, 1e-12)
+        assertTrue(d.hasFired(ActEvent.STATS_ON))
+    }
+
+    @Test
     fun `a second start is ignored`() {
         val d = ExperienceDirector(Rng(1))
         d.start(church, church.lat, church.lng, testMode = true)
@@ -84,7 +97,7 @@ class ExperienceDirectorTest {
         assertEquals(1790.0, acts[0].second, 2.0) // beacon: already inside its ring
         assertEquals(800.0, acts[1].second, 2.0)
         assertTrue(acts[2].second in 394.0..400.0)
-        assertTrue(acts[3].second in 96.0..100.0)
+        assertTrue("stats_on at ${acts[3].second} m", acts[3].second in 293.0..300.0)
     }
 
     @Test

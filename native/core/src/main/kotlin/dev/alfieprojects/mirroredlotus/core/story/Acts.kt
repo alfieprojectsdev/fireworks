@@ -8,10 +8,16 @@ import kotlin.math.max
  * `ActsTest`, per the repo's "enumerate every boundary" rule.
  *
  * Note the marquee and stats targets deliberately keep the web build's
- * overshoot: they are only floored at 0, so inside 150 m (marquee) and 40 m
- * (stats) the target climbs past 1. The renderer clamps effective alpha the
- * way WebGL did, so the overshoot brightens the soft glow halos rather than
- * the glyph cores - a look the web build had, whether or not by design.
+ * overshoot: they are only floored at 0, so inside 150 m the target climbs
+ * past 1. The renderer clamps effective alpha the way WebGL did, so the
+ * overshoot brightens the soft glow halos rather than the glyph cores - a look
+ * the web build had, whether or not by design.
+ *
+ * Changed from the web build (Alfie's call, 16 Oct 2026): the stat pylons
+ * light from 300 m, full at 150 m, instead of 100 -> 40 m. From a car on
+ * Maginhawa the old window lasted 7 s and ended with the number above the
+ * frame; digits are readable on the A07 from about 180 m, and the whole
+ * stack fits the frame from about 60 m.
  */
 object Acts {
     // ACT 0: beacon fades in 1800 -> 1500 m, holds to 800 m, fades out 800 -> 650 m.
@@ -27,9 +33,9 @@ object Acts {
     const val MARQUEE_START_M = 400.0
     const val MARQUEE_FULL_M = 150.0
 
-    // ACT 3: stat pylons emerge 100 -> 40 m.
-    const val STATS_START_M = 100.0
-    const val STATS_FULL_M = 40.0
+    // ACT 3: stat pylons emerge 300 -> 150 m, alongside the crown.
+    const val STATS_START_M = 300.0
+    const val STATS_FULL_M = 150.0
 
     /** Distance under which the 60 s countdown to the personal message arms. */
     const val MESSAGE_ARM_M = 100.0
@@ -51,16 +57,18 @@ object Acts {
     fun statsTarget(d: Double): Double =
         if (d <= STATS_START_M) max(0.0, 1 - (d - STATS_FULL_M) / (STATS_START_M - STATS_FULL_M)) else 0.0
 
-    /** The HUD's stage name (`_stageLabel` in sensors.js). */
+    /**
+     * The HUD's stage name (`_stageLabel` in sensors.js, up to 400 m; the
+     * bands inside it follow the pylons' 300 -> 150 m window).
+     */
     fun stageLabel(d: Double): String = when {
         d > 1800 -> "approaching"
         d > 1500 -> "beacon_fading_in"
         d > 800 -> "beacon_full"
         d > 650 -> "beacon_fading_out"
         d > 400 -> "fireworks_only"
-        d > 150 -> "marquee_fading_in"
-        d > 100 -> "marquee_full"
-        d > 40 -> "stats_fading_in"
+        d > STATS_START_M -> "marquee_fading_in"
+        d > STATS_FULL_M -> "marquee_and_stats_fading_in"
         else -> "full_experience"
     }
 }
@@ -70,5 +78,5 @@ enum class ActEvent(val id: String, val expectedM: Int) {
     BEACON_ON("beacon_on", 1800),
     FIREWORKS_ON("fireworks_on", 800),
     MARQUEE_ON("marquee_on", 400),
-    STATS_ON("stats_on", 100),
+    STATS_ON("stats_on", 300),
 }

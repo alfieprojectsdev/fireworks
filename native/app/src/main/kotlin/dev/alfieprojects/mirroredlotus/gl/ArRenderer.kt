@@ -140,7 +140,7 @@ class ArRenderer(
     private var textures: SceneTextures? = null
     private var marqueeTex = 0
     private val pylonTex = IntArray(4)
-    private val pylonWidth = FloatArray(4)
+    private val pylonDigits = IntArray(4)
     private var messageTex = 0
     private var anisotropy = 0f
 
@@ -378,11 +378,20 @@ class ArRenderer(
         MonumentPlacement.ground(model, gx, gy, gz)
         drawSolid(p, ground, SceneLayout.GROUND_COLOUR, director.groundOpacity().toFloat())
 
-        // Act 3: the four stat pylons.
+        // The four legs under the crown: faint pillars, lit with the crown.
+        val legOpacity = director.legOpacity.toFloat()
+        if (legOpacity > MIN_OPACITY) {
+            for (i in 0 until 4) {
+                MonumentPlacement.leg(model, i, gx, gy, gz)
+                drawSolid(p, plane, SceneLayout.LEG_COLOUR, legOpacity)
+            }
+        }
+
+        // Act 3: the four stat panels at the legs' feet.
         val statsOpacity = director.statsOpacity.toFloat()
         if (statsOpacity > MIN_OPACITY && pylonTex[0] != 0) {
             for (i in 0 until 4) {
-                MonumentPlacement.pylon(model, i, gx, gy, gz, pylonWidth[i])
+                MonumentPlacement.pylon(model, i, gx, gy, gz, pylonDigits[i])
                 drawTextured(p, plane, pylonTex[i], statsOpacity, BackFaces.FOR_PANEL_TEXT)
             }
         }
@@ -485,7 +494,7 @@ class ArRenderer(
         t.pylons.forEachIndexed { i, pylon ->
             if (i < 4) {
                 pylonTex[i] = upload(pylon.bitmap, repeatS = false)
-                pylonWidth[i] = SceneLayout.pylonWidth(pylon.charCount)
+                pylonDigits[i] = pylon.digitCount
             }
         }
         messageTex = upload(t.message, repeatS = true)

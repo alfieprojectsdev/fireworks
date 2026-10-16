@@ -7,11 +7,12 @@ the port (25 September 2026), updated with the laptop session's first A07 result
 
 | | State |
 |---|---|
-| `:core` (story, fireworks, pose maths, camera maths, audio DSP, tracking, thermal ladder, field tests) | **Done, 184 JVM tests passing** |
+| `:core` (story, fireworks, pose maths, camera maths, audio DSP, tracking, thermal ladder, field tests) | **Done, 190 JVM tests: 189 pass, 1 skipped without glslang** |
 | GLSL shaders | **Validated** with glslang 15, and **compiled on the A07's Mali-G57** |
 | `:app` | **Builds** (AGP 8.7.3, compileSdk 35), lint has no errors. **Field tests use the `field` build** (see below) |
 | `DeviceSmokeTest` on the A07 | **4/4 pass** on the field build: three runs on `4e59787` and one on `fbc7c77`, which includes the back-face shader (`gl_FrontFacing`, `discard`, `uBackFaces`), compiled and linked on the Mali-G57 with `GL_NO_ERROR` |
 | On the A07, field build, test mode | **60 fps render, 30 fps camera, 58 ms photon age.** Camera upright, vfov 66.5°. Crown and pylons render and track |
+| Digits-only pylons + date greeting (16 Oct) | **Built; checked on the A07** with a fixed simulated position east of the origin (`--es simulate origin --ef simStartM 250 --ef simSpeed 0.001 --ef simBearing 90`), phone held upright. "252" + sideways "MONTHS" render; just legible at 250 m, clear at 150 m, whole number in frame at 60 m. Crown reads "Happy Anniversary, Bhaze!" in October. The far leg shows through behind the digits (legs are double-sided and additive). Still to do: a drive along Maginhawa |
 | Next on the A07 | Install the new build, run `connectedFieldAndroidTest` (now 5 tests, incl. the field-log writer), then the on-phone field tests: T2, T5 and T1 first (see "Field tests on the phone") |
 | Still to do | Heading check, walk-in (including inside the church, watching the HUD `track:` line), back-face check on the phone, side-by-side with the web build, the A56 |
 

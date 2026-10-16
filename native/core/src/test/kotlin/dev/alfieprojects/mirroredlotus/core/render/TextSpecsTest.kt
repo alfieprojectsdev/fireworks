@@ -29,28 +29,46 @@ class TextSpecsTest {
     }
 
     @Test
-    fun `pylons get one square cell per character`() {
-        val l = TextSpecs.pylon("18 Years")
-        assertEquals(8, l.charCount)
-        assertEquals(256, l.width)
-        assertEquals(256 * 8, l.height)
-        assertEquals(180f, l.fontPx, 0f)
-        assertEquals(128f, l.glyphCentreY(0), 0f)
-        assertEquals(128f, l.glyphCentreX, 0f)
+    fun `pylons get one square cell per digit and a unit strip beside them`() {
+        val l = TextSpecs.pylon("252")
+        assertEquals(3, l.digitCount)
+        assertEquals(256, l.cell)
+        assertEquals(90, l.stripPx) // 0.35 of a cell
+        assertEquals(256 + 90, l.width)
+        assertEquals(256 * 3, l.height)
+        assertEquals(230f, l.digitFontPx, 0f)
+        assertEquals(128f, l.digitCentreY(0), 0f)
+        assertEquals(640f, l.digitCentreY(2), 0f)
+        assertEquals(128f, l.digitCentreX, 0f)
+        assertEquals(301f, l.unitCentreX, 0f)
+        assertEquals(384f, l.unitCentreY, 0f)
+        assertEquals(72f, l.unitFontPx, 1e-4f)
+        assertEquals(691.2f, l.unitMaxLengthPx, 1e-3f)
     }
 
     @Test
-    fun `very long pylon text shrinks its cells to fit the texture limit`() {
-        val l = TextSpecs.pylon("1234567890123456789 Hours", maxHeight = 4096)
-        assertEquals(25, l.charCount)
-        assertEquals(163, l.cell)
+    fun `every stat today fits the texture at full cell size`() {
+        // Hours is the longest: six digits at both sites until 2119.
+        for (digits in listOf("21", "252", "7671", "184104")) {
+            val l = TextSpecs.pylon(digits)
+            assertEquals(256, l.cell)
+            assertEquals(digits.length * 256, l.height)
+        }
+    }
+
+    @Test
+    fun `a very long number shrinks its cells to fit the texture limit`() {
+        val l = TextSpecs.pylon("12345678901234567890123456789", maxHeight = 4096)
+        assertEquals(29, l.digitCount)
+        assertEquals(141, l.cell)
         assertEquals(true, l.height <= 4096)
-        assertEquals(180f * 163 / 256, l.fontPx, 1e-4f)
+        assertEquals(230f * 141 / 256, l.digitFontPx, 1e-4f)
+        assertEquals(49, l.stripPx)
     }
 
     @Test
     fun `argb packing`() {
         assertEquals(0x66FFDCA0, TextSpecs.GLOW.toArgb())
-        assertEquals(0x99FFFFFF.toInt(), TextSpecs.PYLON_FILL.toArgb())
+        assertEquals(0xE6FFFFFF.toInt(), TextSpecs.PYLON_FILL.toArgb())
     }
 }
